@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="UTF-8">
+	<title>xmllint-wasm demo</title>
+	<link rel="stylesheet" href="style.css">
+	<script type="module" src="demo.js"></script>
+</head>
+
+<body>
+	<div class="container">
+		<form id="file-list">
+			<div class="file-list-add-container">
+				<fieldset id="file-list-files"></fieldset>
+				<input type="text" id="file-list-new-name"
+					placeholder="new.xml"
+					title="Name for the validated xml or .xsd for the schema file">
+				<button type="submit" id="file-list-add">+</button>
+			</div>
+		</form>
+		<div id="editor"></div>
+	</div>
+</body>
+
+</html>

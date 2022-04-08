@@ -1,8 +1,10 @@
 .vscode/
 .idea/
+.parcel-cache
 
 node_modules/
 build/
+dist/
 bundle.js
 
 # Build output
