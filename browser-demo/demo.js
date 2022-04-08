@@ -24,7 +24,6 @@ const editorExtensions = [
 const editor = new EditorView({
 	parent: document.getElementById('editor')
 });
-console.log(editor);
 
 let runningValidation = false;
 
@@ -39,25 +38,53 @@ function validate() {
 	});
 }
 
+let currentlySelectedFileId;
+
 async function runValidation() {
+	const files = Array.from(
+		document.querySelectorAll('input[name="file-list-files"]'),
+		(/** @type {HTMLInputElement} */inputEl) => {
+			const filename = inputEl.nextSibling.textContent.trim();
+			const {id} = inputEl;
+			const contents = id === currentlySelectedFileId
+				? editor.state.doc.text
+				: closedTabStates.get(id)?.doc.toString() || '';
+			return {filename, contents};
+		}
+	);
+
+	const isSchemaFile = (file) => file.filename.endsWith('.xsd');
+	const xml = files.filter((file) => !isSchemaFile(file));
+	const schema = files.filter(isSchemaFile);
+
+	const perfDebugLabel = 'xmllint-wasm validation';
+	console.time(perfDebugLabel);
+	try {
+		const validationResult = await validateXML({
+			xml,
+			schema,
+		});
+		console.log(validationResult);
+	} catch(err) {
+		console.error(err);
+	}
+	console.timeEnd(perfDebugLabel);
 
 }
 
 const closedTabStates = new Map();
 
-let previousSelectedFileId;
 
 function selectFile() {
 	/** @type {HTMLInputElement} */
 	const fileListInput = this;
 
-	if (previousSelectedFileId) {
-		const prevEl = fileListInput.parentElement.querySelector(`#${previousSelectedFileId}`);
-		closedTabStates.set(prevEl.id, editor.state);
+	if (currentlySelectedFileId) {
+		closedTabStates.set(currentlySelectedFileId, editor.state);
 	}
 
-	const prevState = closedTabStates.get(fileListInput.id);
-	console.log(prevState);
+	currentlySelectedFileId = fileListInput.id;
+	const prevState = closedTabStates.get(currentlySelectedFileId);
 	editor.setState(EditorState.create({
 		extensions: editorExtensions,
 		...prevState,

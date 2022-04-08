@@ -35,6 +35,7 @@
 			arguments: data.args,
 			stderr: stderrBuffer.push.bind(stderrBuffer),
 			stdout: stdoutBuffer.push.bind(stdoutBuffer),
+			// wasmBinaryFile: new URL('./xmllint.wasm', self.location),
 			onExit,
 		});
 	}

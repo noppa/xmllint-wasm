@@ -9,5 +9,4 @@
 #file-list-files {
 	display: grid;
 	grid-template-columns: 1fr;
-	/* flex-direction: column; */
 }
