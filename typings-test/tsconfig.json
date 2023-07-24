@@ -5,7 +5,7 @@
     "rootDir": "../",
     "noEmit": true,
     "strict": true,
-    "skipLibCheck": true,
+    "skipLibCheck": false,
 		"noImplicitAny": true
   },
 	"include": [
