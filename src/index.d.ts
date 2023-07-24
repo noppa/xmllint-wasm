@@ -3,11 +3,11 @@ export type XMLString = string;
 export interface XMLFileInfo {
   readonly fileName: string;
   readonly contents: XMLString;
-};
+}
 
 export type XMLInput = XMLString | XMLFileInfo;
 
-interface Schema { readonly schema: XMLInput | ReadonlyArray<XMLInput> };
+interface Schema { readonly schema: XMLInput | ReadonlyArray<XMLInput> }
 interface Normalization {
   /**
    * Pass either --format or --c14n to xmllint to get a formatted
@@ -16,7 +16,7 @@ interface Normalization {
    * normalization: 'c14n' performs W3C XML Canonicalisation (C14N).
    */
   readonly normalization: 'format' | 'c14n';
-};
+}
 
 interface XMLLintOptionsBase {
   /**
@@ -68,7 +68,7 @@ export interface XMLValidationError {
     readonly fileName: string;
     readonly lineNumber: number;
   };
-};
+}
 
 export interface XMLValidationResult {
   readonly valid: boolean;
@@ -106,6 +106,6 @@ interface MemoryPagesConstant {
 	 * The maximum possible value for the memory options (4GiB).
 	 */
 	readonly max: number;
-};
+}
 
 export const memoryPages: MemoryPagesConstant;
