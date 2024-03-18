@@ -3,18 +3,14 @@
 	const {parentPort} = require('worker_threads');
 	// #endif
 
-	function bytesToUtf8(buffer) {
-		return new TextDecoder().decode(Uint8Array.from(buffer));
-	}
-
-	const stdoutBuffer = [];
-	const stderrBuffer = [];
+	let stdout = '';
+	let stderr = '';
 
 	function onExit(exitCode) {
 		const message = {
 			exitCode,
-			stdout: bytesToUtf8(stdoutBuffer),
-			stderr: bytesToUtf8(stderrBuffer),
+			stdout,
+			stderr,
 		};
 		// #ifdef node
 		parentPort.postMessage(message);
@@ -37,8 +33,17 @@
 		Module({
 			inputFiles: data.inputFiles,
 			arguments: data.args,
-			stderr: stderrBuffer.push.bind(stderrBuffer),
-			stdout: stdoutBuffer.push.bind(stdoutBuffer),
+			// TODO: We could eagerly start sending stdout to the parent thread while
+			// waiting for more. Or we could probably use some other, more efficient
+			// Emscripten API for output communication in the first place.
+			// But this seems to work fine for now, better than pushing the stdout
+			// values to an array.
+			print(text) {
+				stdout += text + '\n';
+			},
+			printErr(text) {
+				stderr += text + '\n';
+			},
 			onExit,
 			wasmMemory,
 			// #ifdef browser
