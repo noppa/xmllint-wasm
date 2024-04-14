@@ -1,4 +1,6 @@
 import * as xmllint from '../index-node'
+import * as fs from 'fs'
+
 
 xmllint.validateXML({
 	xml: [],
@@ -9,11 +11,11 @@ xmllint.validateXML({
 	// Error expected: normalization or schema param is required
 });
 
-import * as fs from 'fs'
 
 async function example() {
 	const [myXMLFile, mySchemaFile] = await Promise.all([
-		fs.promises.readFile('./my-xml-file.xml', 'utf8'),
+		// Read as a Buffer to test that the types also accept that
+		fs.promises.readFile('./my-xml-file.xml'),
 		fs.promises.readFile('./my-schema-file.xml', 'utf8'),
 	])
 

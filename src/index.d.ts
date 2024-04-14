@@ -2,7 +2,7 @@ export type XMLString = string;
 
 export interface XMLFileInfo {
   readonly fileName: string;
-  readonly contents: XMLString;
+  readonly contents: XMLString | Uint8Array;
 }
 
 export type XMLInput = XMLString | XMLFileInfo;

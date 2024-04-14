@@ -4,7 +4,7 @@ export type XMLString = string;
 
 export type XMLFileInfo = {|
   +fileName: string;
-  +contents: XMLString;
+  +contents: XMLString | Uint8Array;
 |};
 
 export type XMLInput = XMLString | XMLFileInfo;
