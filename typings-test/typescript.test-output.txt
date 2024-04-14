@@ -1,3 +1,1 @@
-typings-test/typescript.test.ts(8,21): error TS2345: Argument of type '{}' is not assignable to parameter of type 'XMLLintOptions'.
-  Type '{}' is not assignable to type 'XMLLintOptionsBase & Schema & Normalization'.
-    Property 'xml' is missing in type '{}' but required in type 'XMLLintOptionsBase'.
+typings-test/typescript.test.ts(10,21): error TS2345: Argument of type '{}' is not assignable to parameter of type 'XMLLintOptions'.
