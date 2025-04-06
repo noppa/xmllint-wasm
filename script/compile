@@ -9,10 +9,10 @@ function use_emcc() {
 		-s ALLOW_MEMORY_GROWTH \
 		-s MAXIMUM_MEMORY=4GB \
 		-s NO_EXIT_RUNTIME=0 \
+		-s FORCE_FILESYSTEM=1 \
 		-s EXPORT_NAME=Module \
 		--closure 1 \
-		--memory-init-file 0 \
-		./build/xmllint.o ./build/.libs/libxml2.a ./libz.a \
+		./build/xmllint-xmllint.o ./build/.libs/libxml2.a ./libz.a \
 		-o xmllint.js \
 		--pre-js ./build/worker-pre.js \
 		--extern-post-js ./build/worker-post.js \
