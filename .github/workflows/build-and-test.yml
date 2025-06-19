@@ -14,7 +14,7 @@ jobs:
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version: 18.x
+          node-version: 22.x
       - run: npm ci
       - run: npm run lint
 
@@ -27,7 +27,7 @@ jobs:
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version: 18.x
+          node-version: 22.x
       - run: npm ci
       - run: npm run build
       - run: npm pack
@@ -44,7 +44,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [14.x, 18.x, 20.x]
+        node-version: [16.x, 18.x, 20.x, 22.x]
 
     steps:
       - uses: actions/checkout@v4
