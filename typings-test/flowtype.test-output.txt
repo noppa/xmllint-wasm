@@ -14,14 +14,14 @@ Cannot call `xmllint.validateXML` with object literal bound to `options` because
        ^ [1]
 
 References:
-   ../index-node.js.flow:68:5
-   68|   | XMLLintOptionsForValidation
+   ../index-node.js.flow:83:5
+   83|   | XMLLintOptionsForValidation
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^ [2]
-   ../index-node.js.flow:69:5
-   69|   | XMLLintOptionsForNormalization
+   ../index-node.js.flow:84:5
+   84|   | XMLLintOptionsForNormalization
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ [3]
-   ../index-node.js.flow:70:5
-   70|   | XMLLintOptionsForValidationAndNormalization; 
+   ../index-node.js.flow:85:5
+   85|   | XMLLintOptionsForValidationAndNormalization; 
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ [4]
 
 
