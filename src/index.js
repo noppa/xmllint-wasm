@@ -9,6 +9,9 @@ const memoryPages = {
 	max: 65536
 };
 
+/**
+ * @returns {{fileName: string, contents: string}[]}
+ */
 function normalizeInput(fileInput, extension) {
 	if (!Array.isArray(fileInput)) fileInput = [fileInput];
 	return fileInput.map((xmlInfo, i) => {
@@ -23,18 +26,33 @@ function normalizeInput(fileInput, extension) {
 	});
 }
 
+/**
+ * @param {import("./index").XMLLintOptions} options 
+ */
 function preprocessOptions(options) {
 	const xmls = normalizeInput(options.xml, 'xml');
 	const extension = options.extension || 'schema';
 
 	validateOption(['schema', 'relaxng'], 'extension', extension);
+
 	const schemas = normalizeInput(options.schema || [], 'xsd');
 	const preloads = normalizeInput(options.preload || [], 'xml');
+
+	if (!options.disableFileNameValidation)	{
+		for (const file of xmls.concat(schemas)) {
+			if (/(^|\s)-/.test(file.fileName)) {
+				throw new Error(`Invalid file name "${file.fileName}" that would be interpreted as a command line option.`);
+			}
+		}
+	}
+
 	const normalization = options.normalization || '';
 	validateOption(['', 'format', 'c14n'], 'normalization', normalization);
 
 	const inputFiles = xmls.concat(schemas, preloads);
-	const args = [];
+
+	/** @type string[] */
+	let args = [];
 	schemas.forEach(function(schema) {
 		args.push(`--${extension}`);
 		args.push(schema['fileName']);
@@ -50,6 +68,13 @@ function preprocessOptions(options) {
 	xmls.forEach(function(xml) {
 		args.push(xml['fileName']);
 	});
+
+	if (options.modifyArguments) {
+		args = options.modifyArguments(args);
+		if (!Array.isArray(args)) {
+			throw new Error('modifyArguments must return an array of arguments');
+		}
+	}
 
 	const opts = {
 		inputFiles, args,

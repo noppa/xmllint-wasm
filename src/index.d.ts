@@ -24,6 +24,14 @@ interface XMLLintOptionsBase {
    * Note that xmllint only supports UTF-8 encoded files.
   */
   readonly xml: XMLInput | ReadonlyArray<XMLInput>;
+	/**
+	 * By default, we do some sanity checks on the file names
+	 * to make sure they won't be intepreted by xmllint as command line arguments.
+	 * This is new in version 5 of the library. If you want to keep the old behavior
+	 * and allow filenames starting with dashes, you can set this to true.
+	 * Default: false.
+	 */
+	readonly disableFileNameValidation?: boolean;
   /**
    * Other files that should be added to Emscripten's in-memory
    * file system so that xmllint can access them.
@@ -50,6 +58,13 @@ interface XMLLintOptionsBase {
 	* The following example would set the max memory to 2GiB.
 	*/
   readonly maxMemoryPages?: number;
+
+	/**
+	 * Allows arbitrary modifications to the arguments passed to xmllint.
+	 * Useful for adding custom options that are not supported first-class by
+	 * this library.
+	 */
+	readonly modifyArguments?: (args: string[]) => string[];
 }
 
 export type XMLLintOptions = XMLLintOptionsBase & (Schema | Normalization | (Schema & Normalization));

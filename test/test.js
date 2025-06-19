@@ -86,6 +86,43 @@ async function testWithInvalidFile() {
 	assert.deepEqual(result, expectedErrorResult);
 }
 
+async function testWithInvalidFileName() {
+	let error1;
+	try {
+		await xmllint.validateXML({
+			xml: {fileName: '--foo', contents: xmlValid},
+			...schemaOptions,
+		});
+	} catch (err) {
+		error1 = err;
+	}
+	assert.match(String(error1), /Invalid file name "--foo"/);
+
+	let error2;
+	try {
+		await xmllint.validateXML({
+			xml: {fileName: 'foo -bar', contents: xmlValid},
+			...schemaOptions,
+		});
+	} catch (err) {
+		error2 = err;
+	}
+	assert.match(String(error2), /Invalid file name "foo -bar"/);
+}
+
+async function testWithCustomOptions() {
+	const {rawOutput} = await xmllint.validateXML({
+		xml: [],
+		modifyArguments(args) {
+			assert(Array.isArray(args));
+			assert(args.every(arg => typeof arg === 'string'));
+
+			return ['--version'];
+		}
+	});
+	assert.match(rawOutput, /using libxml version/);
+}
+
 async function testWithTwoFiles() {
 	const input = [
 		{
@@ -200,6 +237,8 @@ runTests(
 	testWithValidFileForFormatWithoutSchema,
 	testWithValidFileForC14n,
 	testWithInvalidFile,
+	testWithInvalidFileName,
+	testWithCustomOptions,
 	testWithTwoFiles,
 	testWithLargeFile,
 );

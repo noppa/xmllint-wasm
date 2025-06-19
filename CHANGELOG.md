@@ -2,7 +2,7 @@
 
 ## 5.0.0
 
-Officially supported Node.js version is raised from 12 to 14, which is a **breaking change**.
+Officially supported Node.js version is raised from 12 to 16, which is a **breaking change**.
 
 Optimizes the XML file input reading, by switching from Emscripten `FS.createDataFile` to
 `FS.writeFile`.  
@@ -20,7 +20,22 @@ that occurred on very large outputs.
 In some cases, the old output handling resulted in output not having a last line break at the end of
 output. In the new output, the last line break is always included. This could **break** some tests 
 where you expect some exact output that didn't previously have said line break in the end.  
-Otherwise, there shouldn't be any breaking changes to the output format.
+
+We now validate that XML and Schema file names do not start with a dash (`-`), or contain 
+a space and a dash (` -`), which would cause xmllint to interpret the file name
+as a command line option. File names could be user-inputted, so this change is to
+prevent end users from accidentally or maliciously changing the expected behaviour of
+the validation. It is recommended, though, to also do stricter validation of file names
+if you accept them from user input. 
+This is a **breaking change** if you previously passed in file names that started with a dash.  
+There is a new option `disableFileNameValidation` to disable this validation if you want
+to keep the old behaviour and accept any kind of file name.
+
+Adds new optional option `modifyArguments`, which allows you to arbitrarily add
+or modify the command line arguments that are passed to the xmllint command. The
+option is a function that receives the current arguments as an array, and should
+return a new array of string arguments.  
+Closes [#22](https://github.com/noppa/xmllint-wasm/issues/22).
 
 ## 4.0.2
 
