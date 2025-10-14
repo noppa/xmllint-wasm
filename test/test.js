@@ -197,9 +197,10 @@ async function testWithLargeFile() {
 		error = String(err);
 	}
 	if (error) {
-		console.info('Test without memory limit failed with error:', error);
+		console.info('This is expected: Test without memory limit failed with error:', error);
 	} else {
-		console.info('Test passed even without memory limit.');
+		// Don't fail the CI just because of this. When we hit OOM and when not is pretty flaky.
+		console.warn('Unexpected: Test passed even without memory limit.');
 	}
 
 	if (typeof gc === 'function') {
@@ -207,7 +208,7 @@ async function testWithLargeFile() {
 	}
 
 	// Should pass if we increase the max heap size.
-	const result = await xmllint.validateXML({
+	const resultUsingIncreasedMemory = await xmllint.validateXML({
 		xml,
 		...schemaOptions,
 		// This is not really relevant for the passing of the test, but included
@@ -215,7 +216,15 @@ async function testWithLargeFile() {
 		initialMemoryPages: xmllint.memoryPages.MiB * 30,
 		maxMemoryPages: xmllint.memoryPages.GiB,
 	});
-	assert(result.valid);
+	assert(resultUsingIncreasedMemory.valid);
+
+	// Try the same with streaming instead of the raised memory limits
+	const resultUsingStreaming = await xmllint.validateXML({
+		xml,
+		stream: true,
+		...schemaOptions,
+	});
+	assert(resultUsingStreaming.valid);
 }
 
 async function runTests(...tests) {
