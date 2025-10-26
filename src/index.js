@@ -65,6 +65,10 @@ function preprocessOptions(options) {
 		args.push('--noout');
 	}
 
+	if (options.stream) {
+		args.push('--stream');
+	}
+
 	xmls.forEach(function(xml) {
 		args.push(xml['fileName']);
 	});

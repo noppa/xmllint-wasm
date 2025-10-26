@@ -60,6 +60,14 @@ interface XMLLintOptionsBase {
   readonly maxMemoryPages?: number;
 
 	/**
+	 * Use xmllint's streaming API.
+	 * Useful when used in combination with --relaxng or --valid options for validation of
+	 * files that are too large to be held in memory.
+	 * Default: false.
+	 */
+	readonly stream?: boolean;
+
+	/**
 	 * Allows arbitrary modifications to the arguments passed to xmllint.
 	 * Useful for adding custom options that are not supported first-class by
 	 * this library.

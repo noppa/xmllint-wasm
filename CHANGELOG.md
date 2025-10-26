@@ -1,5 +1,14 @@
 # Changelog
 
+## 5.1.0
+
+Add support for xmllint's `--stream` option, which is useful when  
+validating large XML files. 
+Supporting this feature required compiling libxml2 with `reader` support, which
+adds about 30K, or 4%, increase to the wasm binary size.
+
+Closes [#27](https://github.com/noppa/xmllint-wasm/issues/27).
+
 ## 5.0.0
 
 Officially supported Node.js version is raised from 12 to 16, which is a **breaking change**.
