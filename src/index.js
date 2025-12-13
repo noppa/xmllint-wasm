@@ -223,7 +223,7 @@ class XMLLint {
 
 			let resolve, reject;
 			if (this.pending.has(data.seq)) {
-				const prom = this.get(data.seq);
+				const prom = this.pending.get(data.seq);
 				resolve = prom.resolve;
 				reject = prom.reject;
 			} else {
@@ -301,7 +301,7 @@ class XMLLint {
 		const seq = ++messageId;
 
 		return new Promise((resolve, reject) => {
-			this.pending[seq] = { resolve, reject };
+			this.pending.set(seq, { resolve, reject });
 
 			this.worker.postMessage({
 				seq,

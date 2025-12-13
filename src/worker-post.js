@@ -144,7 +144,7 @@
 		// #ifdef node
 		var data = event;
 		// #endif
-
+		
 		if (!data.type) throw new Error('XMLLint worker: Expecting message type in worker message');
 		if (!data.seq) throw new Error('XMLLint worker: Expecting sequence number in worker message');
 
