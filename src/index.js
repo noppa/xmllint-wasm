@@ -316,6 +316,9 @@ class XMLLint {
 			this.worker.terminate();
 			this.worker = null;
 		}
+
+		const err = new Error('Worker terminated'); // let's be gentle and use the error from here, this helps debugging for our users
+		for (const pending of this.pending.values()) pending.reject(err);
 	}
 
 	[Symbol.dispose]() {
