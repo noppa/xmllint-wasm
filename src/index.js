@@ -209,14 +209,14 @@ class XMLLint {
 	 * Internal setup for worker communication
 	 */
 	_bindListeners() {
-		const onmessage = (event) => {
+		const onmessage = async (event) => {
 			// #ifdef browser
 			var data = event.data;
 			// #endif
 			// #ifdef node
 			var data = event;
 			// #endif
-			
+
 			if (!data.seq) {
 				throw new Error('Message without sequence id');
 			}

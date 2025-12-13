@@ -13,6 +13,7 @@ function use_emcc() {
 		-s INVOKE_RUN=0 \
 		-s EXPORT_NAME=Module \
     -s EXPORTED_RUNTIME_METHODS='["callMain", "FS"]' \
+    -s EXPORTED_FUNCTIONS='["_main", "_fflush", "_putchar"]' \
 		--closure 1 \
 		./build/xmllint-xmllint.o ./build/.libs/libxml2.a ./libz.a \
 		-o xmllint.js \

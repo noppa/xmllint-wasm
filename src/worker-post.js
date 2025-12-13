@@ -48,7 +48,7 @@
 			stderr
 		};
 
-		stdout='';
+		stdout = '';
 		stderr = '';
 
 		return message;
@@ -129,11 +129,18 @@
 		const mod = await ensureModule();
 		const exitCode = mod.callMain(data.args);
 
-		const {stdout, stderr} = flush(exitCode);
+		mod._fflush(0);
+		mod._putchar(10);
+
+		const {stdout, stderr} = flush();
+
+		// Re-remove the newline char we introduced due to our buffer force (putchar)
+		const finalStdout = stdout.slice(0, -1);
+
 		post({
 			seq: data.seq,
 			type: 'RESULT',
-			exitCode, stdout, stderr
+			exitCode, stdout:finalStdout, stderr
 		});
 	}
 
@@ -144,7 +151,7 @@
 		// #ifdef node
 		var data = event;
 		// #endif
-		
+
 		if (!data.type) throw new Error('XMLLint worker: Expecting message type in worker message');
 		if (!data.seq) throw new Error('XMLLint worker: Expecting sequence number in worker message');
 
