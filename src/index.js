@@ -8,6 +8,7 @@ const memoryPages = {
 	defaultMaxMemoryPages: 512 /* 32MiB */,
 	max: 65536
 };
+let messageId = 0;
 
 /**
  * @returns {{fileName: string, contents: string}[]}
@@ -151,64 +152,175 @@ function parseErrors(/** @type {string} */ output) {
 }
 
 /** @type {import("./index").validateXML} */
-function validateXML(options) {
+async function validateXML(options) {
 	const preprocessedOptions = preprocessOptions(options);
-	var worker;
 
-	return new Promise(function validateXMLPromiseCb(resolve, reject) {
-		function onmessage(event) {
+	let linter, ret;
+	try {
+		linter = XMLLint.init({
+			initialMemory: preprocessedOptions.initialMemory,
+			maxMemory: preprocessedOptions.maxMemory
+		});
+		linter.mount(preprocessedOptions.inputFiles);
+		ret = await linter.process(preprocessedOptions.args);
+	} finally {
+		if (linter) {
+			linter.terminate();
+		}
+	}
+
+	return ret ? ret : Promise.reject('Unexepected error');
+}
+
+class XMLLint {
+	constructor(memoryCfg) {
+		this.worker = null;
+		this.pending = new Map();
+
+		// #ifdef browser
+		this.worker = new Worker(new URL('./xmllint-browser.mjs', import.meta.url), { type: 'module' });
+		this.listen = this.worker.addEventListener.bind(this.worker);
+		// #endif
+
+		// #ifdef node
+		const { Worker } = require('worker_threads');
+		this.worker = new Worker(require('path').resolve(__dirname, './xmllint-node.js'));
+		this.listen = this.worker.on.bind(this.worker);
+		// #endif
+
+
+		this._bindListeners();
+
+		if (memoryCfg) {
+			this.worker.postMessage({
+				seq: ++messageId,
+				type: 'INIT', // Matches worker "BOOT" case
+				initialMemory: memoryCfg.initialMemory,
+				maxMemory: memoryCfg.maxMemory
+			});
+		}
+	}
+
+	static init(memoryCfg) {
+		return new XMLLint(memoryCfg);
+	}
+
+	/**
+	 * Internal setup for worker communication
+	 */
+	_bindListeners() {
+		const onmessage = (event) => {
 			// #ifdef browser
 			var data = event.data;
+			// #endif
 			// #ifdef node
 			var data = event;
 			// #endif
-
-			const valid = validationSucceeded(data.exitCode);
-			if (valid === null) {
-				const err = new Error(data.stderr);
-				err.code = data.exitCode;
-				reject(err);
-			} else {
-				resolve({
-					valid: valid,
-					normalized: data.stdout,
-					errors: valid ? [] : parseErrors(data.stderr),
-					rawOutput: data.stderr
-					/* Traditionally, stdout has been suppressed both
-					 * by libxml2 compile options as well as explict
-					 * --noout in arguments; hence »rawOutput« refers
-					 * only to stderr, which is a reasonable attribute value
-					 * despite the slightly odd attribute name.
-					 */
-				});
+			
+			if (!data.seq) {
+				throw new Error('Message without sequence id');
 			}
+
+			let resolve, reject;
+			if (this.pending.has(data.seq)) {
+				const prom = this.get(data.seq);
+				resolve = prom.resolve;
+				reject = prom.reject;
+			} else {
+				resolve = () => {};
+				reject = (err) => {
+					throw err;
+				};
+			}
+
+			this.pending.delete(data.seq);
+
+			if (data.error) {
+				reject(new Error(data.error));
+				return;
+			}
+
+			if (data.type === 'RESULT') {
+				const valid = validationSucceeded(data.exitCode);
+				if (valid === null) {
+					const err = new Error(data.stderr);
+					err.code = data.exitCode;
+					reject(err);
+				} else {
+					resolve({
+						valid: valid,
+						normalized: data.stdout,
+						errors: valid ? [] : parseErrors(data.stderr),
+						rawOutput: data.stderr
+					});
+				}
+			} else {
+				reject(new Error('Could not process message'));
+			}
+		};
+
+		const onerror = (err) => {
+			if (this.pendingProcess) {
+				this.pendingProcess.reject(err);
+				this.pendingProcess = null;
+			}
+			console.error('XMLLint Worker Error:', err);
+		};
+
+		this.listen('message', onmessage);
+		this.listen('error', onerror);
+	}
+
+	/**
+	 * Mount initial files (clears previous VFS)
+	 */
+	mount(files) {
+		this.worker.postMessage({
+			seq: ++messageId,
+			type: 'MOUNT',
+			files: files
+		});
+	}
+
+	/**
+	 * Add a single file to the VFS without clearing others
+	 */
+	addFile(fileName, contents) {
+		this.worker.postMessage({
+			seq: ++messageId,
+			type: 'ADDFILE',
+			fileName, contents
+		});
+	}
+
+	/**
+	 * Run the validation (PROCESS)
+	 * Returns a Promise that resolves when the worker flushes stdout/stderr
+	 */
+	process(args) {
+		const seq = ++messageId;
+
+		return new Promise((resolve, reject) => {
+			this.pending[seq] = { resolve, reject };
+
+			this.worker.postMessage({
+				seq,
+				type: 'PROCESS',
+				args: args
+			});
+		});
+	}
+
+	terminate() {
+		if (this.worker) {
+			this.worker.terminate();
+			this.worker = null;
 		}
+	}
 
-		function onerror(err) {
-			reject(err);
-		}
-
-		// #ifdef browser
-		worker = new Worker(new URL('./xmllint-browser.mjs', import.meta.url), { type: 'module' });
-		// #ifdef node
-		const {Worker} = require('worker_threads');
-		worker = new Worker(require('path').resolve(__dirname, './xmllint-node.js'));
-		// #endif
-
-		// #ifdef browser
-		var addEventListener = worker.addEventListener.bind(worker);
-		// #ifdef node
-		var addEventListener = worker.on.bind(worker);
-		// #endif
-
-		addEventListener('message', onmessage);
-		addEventListener('error', onerror);
-		worker.postMessage(preprocessedOptions);
-	}).finally(() => {
-		if (worker) {
-			return worker.terminate();
-		}
-	});
+	[Symbol.dispose]() {
+		this.terminate();
+	}
 }
 
 // #ifdef browser
