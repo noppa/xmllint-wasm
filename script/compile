@@ -56,5 +56,3 @@ mv xmllint.js ./xmllint-browser.mjs
 compile_js node
 use_emcc -s ENVIRONMENT=node,worker
 mv xmllint.js ./xmllint-node.js
-
-echo "================================="; echo "Node/browser build complete"; echo "=================================";echo;
