@@ -194,9 +194,16 @@ class XMLLint {
 		if (memoryCfg) {
 			this.worker.postMessage({
 				seq: ++messageId,
-				type: 'INIT', // Matches worker "BOOT" case
+				type: 'INIT',
 				initialMemory: memoryCfg.initialMemory,
 				maxMemory: memoryCfg.maxMemory
+			});
+		} else {
+			this.worker.postMessage({
+				seq: ++messageId,
+				type: 'INIT',
+				initialMemory: memoryPages.defaultInitialMemoryPages,
+				maxMemory: memoryPages.defaultMaxMemoryPages
 			});
 		}
 	}
@@ -327,8 +334,9 @@ class XMLLint {
 }
 
 // #ifdef browser
-export { validateXML, memoryPages };
+export { validateXML, memoryPages, XMLLint };
 // #ifdef node
 module.exports.validateXML = validateXML;
 module.exports.memoryPages = memoryPages;
+module.exports.XMLLint = XMLLint;
 // #endif
