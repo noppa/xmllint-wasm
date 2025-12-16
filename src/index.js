@@ -8,7 +8,6 @@ const memoryPages = {
 	defaultMaxMemoryPages: 512 /* 32MiB */,
 	max: 65536
 };
-let messageId = 0;
 
 /**
  * @returns {{fileName: string, contents: string}[]}
@@ -25,35 +24,41 @@ function normalizeInput(fileInput, extension) {
 			return xmlInfo;
 		}
 	});
-}
+};
 
-/**
- * @param {import("./index").XMLLintOptions} options 
- */
-function preprocessOptions(options) {
-	const xmls = normalizeInput(options.xml, 'xml');
-	const extension = options.extension || 'schema';
+function validateOptions(processedOptions) {
+	const orig = processedOptions.original;
 
-	validateOption(['schema', 'relaxng'], 'extension', extension);
-
-	const schemas = normalizeInput(options.schema || [], 'xsd');
-	const preloads = normalizeInput(options.preload || [], 'xml');
-
-	if (!options.disableFileNameValidation)	{
-		for (const file of xmls.concat(schemas)) {
+	if (!orig.disableFileNameValidation)	{
+		const files = processedOptions.files;
+		for (const file of files.xmls.concat(files.schemas)) {
 			if (/(^|\s)-/.test(file.fileName)) {
 				throw new Error(`Invalid file name "${file.fileName}" that would be interpreted as a command line option.`);
 			}
 		}
 	}
 
-	const normalization = options.normalization || '';
-	validateOption(['', 'format', 'c14n'], 'normalization', normalization);
+	const extension = orig.extension || 'schema';
+	const normalization = orig.normalization || '';
 
-	const inputFiles = xmls.concat(schemas, preloads);
+	validateOption(['schema', 'relaxng'], 'extension', extension);
+	validateOption(['', 'format', 'c14n'], 'normalization', normalization);
+	validateMemoryLimitOptions(processedOptions.memory);
+}
+
+/**
+ * @param {import("./index").XMLLintOptions} options
+ */
+function preprocessOptions(options) {
+	const xmls = normalizeInput(options.xml, 'xml');
+	const schemas = normalizeInput(options.schema || [], 'xsd');
+	const preloads = normalizeInput(options.preload || [], 'xml');
+
+	const normalization = options.normalization || '';
+	const extension = options.extension || 'schema';
 
 	/** @type string[] */
-	let args = [];
+	const args = [];
 	schemas.forEach(function(schema) {
 		args.push(`--${extension}`);
 		args.push(schema['fileName']);
@@ -74,20 +79,19 @@ function preprocessOptions(options) {
 		args.push(xml['fileName']);
 	});
 
-	if (options.modifyArguments) {
-		args = options.modifyArguments(args);
-		if (!Array.isArray(args)) {
-			throw new Error('modifyArguments must return an array of arguments');
-		}
-	}
-
 	const opts = {
-		inputFiles, args,
-		initialMemory: options.initialMemoryPages || memoryPages.defaultInitialMemoryPages,
-		maxMemory: options.maxMemoryPages || memoryPages.defaultMaxMemoryPages,
+		args,
+		files: {
+			xmls,
+			schemas,
+			preloads,
+		},
+		memory: {
+			initialMemory: options.initialMemoryPages || memoryPages.defaultInitialMemoryPages,
+			maxMemory: options.maxMemoryPages || memoryPages.defaultMaxMemoryPages,
+		},
+		original: options
 	};
-
-	validateMemoryLimitOptions(opts);
 
 	return opts;
 }
@@ -153,16 +157,15 @@ function parseErrors(/** @type {string} */ output) {
 
 /** @type {import("./index").validateXML} */
 async function validateXML(options) {
-	const preprocessedOptions = preprocessOptions(options);
-
 	let linter, ret;
+
+	const preprocessed = preprocessOptions(options);
+	validateOptions(preprocessed);
+
 	try {
-		linter = XMLLint.init({
-			initialMemory: preprocessedOptions.initialMemory,
-			maxMemory: preprocessedOptions.maxMemory
-		});
-		linter.mount(preprocessedOptions.inputFiles);
-		ret = await linter.process(preprocessedOptions.args);
+		linter = XMLLint.init(preprocessed.memory);
+		linter.mount([...preprocessed.files.xmls, ...preprocessed.files.schemas, ...preprocessed.files.preloads]);
+		ret = await linter.process({args: preprocessed.args, modifyArguments: options.modifyArguments});
 	} finally {
 		if (linter) {
 			linter.terminate();
@@ -175,6 +178,7 @@ async function validateXML(options) {
 class XMLLint {
 	constructor(memoryCfg) {
 		this.worker = null;
+		this.messageId = 0;
 		this.pending = new Map();
 
 		// #ifdef browser
@@ -193,14 +197,14 @@ class XMLLint {
 
 		if (memoryCfg) {
 			this.worker.postMessage({
-				seq: ++messageId,
+				seq: ++this.messageId,
 				type: 'INIT',
 				initialMemory: memoryCfg.initialMemory,
 				maxMemory: memoryCfg.maxMemory
 			});
 		} else {
 			this.worker.postMessage({
-				seq: ++messageId,
+				seq: ++this.messageId,
 				type: 'INIT',
 				initialMemory: memoryPages.defaultInitialMemoryPages,
 				maxMemory: memoryPages.defaultMaxMemoryPages
@@ -209,6 +213,7 @@ class XMLLint {
 	}
 
 	static init(memoryCfg) {
+		// TODO add type: {initialMemory, maxMemory}
 		return new XMLLint(memoryCfg);
 	}
 
@@ -282,8 +287,9 @@ class XMLLint {
 	 * Mount initial files (clears previous VFS)
 	 */
 	mount(files) {
+		// TODO add types [{fileName, contents}]
 		this.worker.postMessage({
-			seq: ++messageId,
+			seq: ++this.messageId,
 			type: 'MOUNT',
 			files: files
 		});
@@ -294,9 +300,9 @@ class XMLLint {
 	 */
 	addFile(fileName, contents) {
 		this.worker.postMessage({
-			seq: ++messageId,
-			type: 'ADDFILE',
-			fileName, contents
+			seq: ++this.messageId,
+			type: 'ADDFILES',
+			files: [{fileName, contents}]
 		});
 	}
 
@@ -304,8 +310,33 @@ class XMLLint {
 	 * Run the validation (PROCESS)
 	 * Returns a Promise that resolves when the worker flushes stdout/stderr
 	 */
-	process(args) {
-		const seq = ++messageId;
+	process(options) {
+		// TODO Add type: {args, modifyArguments} | {xml, schema, extension, normalization, stream}
+		const seq = ++this.messageId;
+
+		let args = options.args;
+		if (args === undefined || (Array.isArray(args) && args.length == 0)) {
+			const processed = preprocessOptions(options);
+			args = processed.args;
+
+			const files = processed.files;
+			const toAdd = files.xmls.concat(files.schemas);
+
+			if (toAdd.length > 0) {
+				this.worker.postMessage({
+					seq: ++this.messageId,
+					type: 'ADDFILES',
+					files: toAdd
+				});
+			}
+		}
+
+		if (options.modifyArguments) {
+			args = opts.modifyArguments(args);
+			if (!Array.isArray(args)) {
+				throw new Error('modifyArguments must return an array of arguments');
+			}
+		}
 
 		return new Promise((resolve, reject) => {
 			this.pending.set(seq, { resolve, reject });

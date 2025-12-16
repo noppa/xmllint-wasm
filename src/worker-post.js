@@ -97,7 +97,7 @@
 		});
 	}
 	async function ensureModule() {
-		if (module == undefined) {
+		if (module === undefined) {
 			throw new Error('XMLLint worker: cannot run commands before init was called first.');
 		}
 
@@ -122,7 +122,8 @@
 
 	async function addFile(data) {
 		const mod = await ensureModule();
-		writeToVFS(mod, { fileName: data.fileName , contents: data.contents });
+
+		data.files.forEach((file) => writeToVFS(mod, file));
 	}
 
 	async function process(data) {
@@ -162,7 +163,7 @@
 		case 'MOUNT':
 			enqueue(() => mount(data));
 			break;
-		case 'ADDFILE':
+		case 'ADDFILES':
 			enqueue(() => addFile(data));
 			break;
 		case 'PROCESS':
