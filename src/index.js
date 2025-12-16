@@ -24,35 +24,41 @@ function normalizeInput(fileInput, extension) {
 			return xmlInfo;
 		}
 	});
-}
+};
 
-/**
- * @param {import("./index").XMLLintOptions} options 
- */
-function preprocessOptions(options) {
-	const xmls = normalizeInput(options.xml, 'xml');
-	const extension = options.extension || 'schema';
+function validateOptions(processedOptions) {
+	const orig = processedOptions.original;
 
-	validateOption(['schema', 'relaxng'], 'extension', extension);
-
-	const schemas = normalizeInput(options.schema || [], 'xsd');
-	const preloads = normalizeInput(options.preload || [], 'xml');
-
-	if (!options.disableFileNameValidation)	{
-		for (const file of xmls.concat(schemas)) {
+	if (!orig.disableFileNameValidation)	{
+		const files = processedOptions.files;
+		for (const file of files.xmls.concat(files.schemas)) {
 			if (/(^|\s)-/.test(file.fileName)) {
 				throw new Error(`Invalid file name "${file.fileName}" that would be interpreted as a command line option.`);
 			}
 		}
 	}
 
-	const normalization = options.normalization || '';
-	validateOption(['', 'format', 'c14n'], 'normalization', normalization);
+	const extension = orig.extension || 'schema';
+	const normalization = orig.normalization || '';
 
-	const inputFiles = xmls.concat(schemas, preloads);
+	validateOption(['schema', 'relaxng'], 'extension', extension);
+	validateOption(['', 'format', 'c14n'], 'normalization', normalization);
+	validateMemoryLimitOptions(processedOptions.memory);
+}
+
+/**
+ * @param {import("./index").XMLLintOptions} options
+ */
+function preprocessOptions(options) {
+	const xmls = normalizeInput(options.xml, 'xml');
+	const schemas = normalizeInput(options.schema || [], 'xsd');
+	const preloads = normalizeInput(options.preload || [], 'xml');
+
+	const normalization = options.normalization || '';
+	const extension = options.extension || 'schema';
 
 	/** @type string[] */
-	let args = [];
+	const args = [];
 	schemas.forEach(function(schema) {
 		args.push(`--${extension}`);
 		args.push(schema['fileName']);
@@ -73,20 +79,19 @@ function preprocessOptions(options) {
 		args.push(xml['fileName']);
 	});
 
-	if (options.modifyArguments) {
-		args = options.modifyArguments(args);
-		if (!Array.isArray(args)) {
-			throw new Error('modifyArguments must return an array of arguments');
-		}
-	}
-
 	const opts = {
-		inputFiles, args,
-		initialMemory: options.initialMemoryPages || memoryPages.defaultInitialMemoryPages,
-		maxMemory: options.maxMemoryPages || memoryPages.defaultMaxMemoryPages,
+		args,
+		files: {
+			xmls,
+			schemas,
+			preloads,
+		},
+		memory: {
+			initialMemory: options.initialMemoryPages || memoryPages.defaultInitialMemoryPages,
+			maxMemory: options.maxMemoryPages || memoryPages.defaultMaxMemoryPages,
+		},
+		original: options
 	};
-
-	validateMemoryLimitOptions(opts);
 
 	return opts;
 }
@@ -151,69 +156,218 @@ function parseErrors(/** @type {string} */ output) {
 }
 
 /** @type {import("./index").validateXML} */
-function validateXML(options) {
-	const preprocessedOptions = preprocessOptions(options);
-	var worker;
+async function validateXML(options) {
+	let linter, ret;
 
-	return new Promise(function validateXMLPromiseCb(resolve, reject) {
-		function onmessage(event) {
+	const preprocessed = preprocessOptions(options);
+	validateOptions(preprocessed);
+
+	try {
+		linter = XMLLint.init(preprocessed.memory);
+		linter.mount([...preprocessed.files.xmls, ...preprocessed.files.schemas, ...preprocessed.files.preloads]);
+		ret = await linter.process({args: preprocessed.args, modifyArguments: options.modifyArguments});
+	} finally {
+		if (linter) {
+			linter.terminate();
+		}
+	}
+
+	return ret ? ret : Promise.reject('Unexepected error');
+}
+
+class XMLLint {
+	constructor(memoryCfg) {
+		this.worker = null;
+		this.messageId = 0;
+		this.pending = new Map();
+
+		// #ifdef browser
+		this.worker = new Worker(new URL('./xmllint-browser.mjs', import.meta.url), { type: 'module' });
+		this.listen = this.worker.addEventListener.bind(this.worker);
+		// #endif
+
+		// #ifdef node
+		const { Worker } = require('worker_threads');
+		this.worker = new Worker(require('path').resolve(__dirname, './xmllint-node.js'));
+		this.listen = this.worker.on.bind(this.worker);
+		// #endif
+
+
+		this._bindListeners();
+
+		if (memoryCfg) {
+			this.worker.postMessage({
+				seq: ++this.messageId,
+				type: 'INIT',
+				initialMemory: memoryCfg.initialMemory,
+				maxMemory: memoryCfg.maxMemory
+			});
+		} else {
+			this.worker.postMessage({
+				seq: ++this.messageId,
+				type: 'INIT',
+				initialMemory: memoryPages.defaultInitialMemoryPages,
+				maxMemory: memoryPages.defaultMaxMemoryPages
+			});
+		}
+	}
+
+	static init(memoryCfg) {
+		// TODO add type: {initialMemory, maxMemory}
+		return new XMLLint(memoryCfg);
+	}
+
+	/**
+	 * Internal setup for worker communication
+	 */
+	_bindListeners() {
+		const onmessage = async (event) => {
 			// #ifdef browser
 			var data = event.data;
+			// #endif
 			// #ifdef node
 			var data = event;
 			// #endif
 
-			const valid = validationSucceeded(data.exitCode);
-			if (valid === null) {
-				const err = new Error(data.stderr);
-				err.code = data.exitCode;
-				reject(err);
+			if (!data.seq) {
+				throw new Error('Message without sequence id');
+			}
+
+			let resolve, reject;
+			if (this.pending.has(data.seq)) {
+				const prom = this.pending.get(data.seq);
+				resolve = prom.resolve;
+				reject = prom.reject;
 			} else {
-				resolve({
-					valid: valid,
-					normalized: data.stdout,
-					errors: valid ? [] : parseErrors(data.stderr),
-					rawOutput: data.stderr
-					/* Traditionally, stdout has been suppressed both
-					 * by libxml2 compile options as well as explict
-					 * --noout in arguments; hence »rawOutput« refers
-					 * only to stderr, which is a reasonable attribute value
-					 * despite the slightly odd attribute name.
-					 */
+				resolve = () => {};
+				reject = (err) => {
+					throw err;
+				};
+			}
+
+			this.pending.delete(data.seq);
+
+			if (data.error) {
+				reject(new Error(data.error));
+				return;
+			}
+
+			if (data.type === 'RESULT') {
+				const valid = validationSucceeded(data.exitCode);
+				if (valid === null) {
+					const err = new Error(data.stderr);
+					err.code = data.exitCode;
+					reject(err);
+				} else {
+					resolve({
+						valid: valid,
+						normalized: data.stdout,
+						errors: valid ? [] : parseErrors(data.stderr),
+						rawOutput: data.stderr
+					});
+				}
+			} else {
+				reject(new Error('Could not process message'));
+			}
+		};
+
+		const onerror = (err) => {
+			if (this.pendingProcess) {
+				this.pendingProcess.reject(err);
+				this.pendingProcess = null;
+			}
+			console.error('XMLLint Worker Error:', err);
+		};
+
+		this.listen('message', onmessage);
+		this.listen('error', onerror);
+	}
+
+	/**
+	 * Mount initial files (clears previous VFS)
+	 */
+	mount(files) {
+		// TODO add types [{fileName, contents}]
+		this.worker.postMessage({
+			seq: ++this.messageId,
+			type: 'MOUNT',
+			files: files
+		});
+	}
+
+	/**
+	 * Add a single file to the VFS without clearing others
+	 */
+	addFile(fileName, contents) {
+		this.worker.postMessage({
+			seq: ++this.messageId,
+			type: 'ADDFILES',
+			files: [{fileName, contents}]
+		});
+	}
+
+	/**
+	 * Run the validation (PROCESS)
+	 * Returns a Promise that resolves when the worker flushes stdout/stderr
+	 */
+	process(options) {
+		// TODO Add type: {args, modifyArguments} | {xml, schema, extension, normalization, stream}
+		const seq = ++this.messageId;
+
+		let args = options.args;
+		if (args === undefined || (Array.isArray(args) && args.length == 0)) {
+			const processed = preprocessOptions(options);
+			args = processed.args;
+
+			const files = processed.files;
+			const toAdd = files.xmls.concat(files.schemas);
+
+			if (toAdd.length > 0) {
+				this.worker.postMessage({
+					seq: ++this.messageId,
+					type: 'ADDFILES',
+					files: toAdd
 				});
 			}
 		}
 
-		function onerror(err) {
-			reject(err);
+		if (options.modifyArguments) {
+			args = opts.modifyArguments(args);
+			if (!Array.isArray(args)) {
+				throw new Error('modifyArguments must return an array of arguments');
+			}
 		}
 
-		// #ifdef browser
-		worker = new Worker(new URL('./xmllint-browser.mjs', import.meta.url), { type: 'module' });
-		// #ifdef node
-		const {Worker} = require('worker_threads');
-		worker = new Worker(require('path').resolve(__dirname, './xmllint-node.js'));
-		// #endif
+		return new Promise((resolve, reject) => {
+			this.pending.set(seq, { resolve, reject });
 
-		// #ifdef browser
-		var addEventListener = worker.addEventListener.bind(worker);
-		// #ifdef node
-		var addEventListener = worker.on.bind(worker);
-		// #endif
+			this.worker.postMessage({
+				seq,
+				type: 'PROCESS',
+				args: args
+			});
+		});
+	}
 
-		addEventListener('message', onmessage);
-		addEventListener('error', onerror);
-		worker.postMessage(preprocessedOptions);
-	}).finally(() => {
-		if (worker) {
-			return worker.terminate();
+	terminate() {
+		if (this.worker) {
+			this.worker.terminate();
+			this.worker = null;
 		}
-	});
+
+		const err = new Error('Worker terminated'); // let's be gentle and use the error from here, this helps debugging for our users
+		for (const pending of this.pending.values()) pending.reject(err);
+	}
+
+	[Symbol.dispose]() {
+		this.terminate();
+	}
 }
 
 // #ifdef browser
-export { validateXML, memoryPages };
+export { validateXML, memoryPages, XMLLint };
 // #ifdef node
 module.exports.validateXML = validateXML;
 module.exports.memoryPages = memoryPages;
+module.exports.XMLLint = XMLLint;
 // #endif
