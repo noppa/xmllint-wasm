@@ -241,7 +241,13 @@ async function runTests(...tests) {
 }
 
 async function testWithMissingWasmFile() {
-	const wasmPath = require('path').resolve(__dirname, '../xmllint.wasm');
+	// Locally xmllint.wasm is at the repo root; in CI the package is installed
+	// from a tarball into node_modules/xmllint-wasm/ so we fall back there.
+	const path = require('path');
+	let wasmPath = path.resolve(__dirname, '../xmllint.wasm');
+	if (!fs.existsSync(wasmPath)) {
+		wasmPath = path.join(path.dirname(require.resolve('xmllint-wasm')), 'xmllint.wasm');
+	}
 	const tmpPath = wasmPath + '.bak';
 	fs.renameSync(wasmPath, tmpPath);
 	try {
