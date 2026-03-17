@@ -240,6 +240,24 @@ async function runTests(...tests) {
 	console.log('All tests passed.');
 }
 
+async function testWithMissingWasmFile() {
+	const wasmPath = require('path').resolve(__dirname, '../xmllint.wasm');
+	const tmpPath = wasmPath + '.bak';
+	fs.renameSync(wasmPath, tmpPath);
+	try {
+		let error;
+		try {
+			await xmllint.validateXML({xml: '<foo/>'});
+		} catch (err) {
+			error = err;
+		}
+		assert(error, 'Expected promise to reject when WASM file is missing');
+		assert.match(String(error.message), /WASM Abort/);
+	} finally {
+		fs.renameSync(tmpPath, wasmPath);
+	}
+}
+
 runTests(
 	testWithValidFile,
 	testWithValidFileForFormat,
@@ -250,4 +268,5 @@ runTests(
 	testWithCustomOptions,
 	testWithTwoFiles,
 	testWithLargeFile,
+	testWithMissingWasmFile,
 );
