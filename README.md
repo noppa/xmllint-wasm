@@ -11,11 +11,7 @@ that exact project).
 This fork continues the original build with some neat updates
 as well as somewhat opinionated breaking changes.
 
-Currently, the library only works in Node.js, but browser support could be
-added if there's a demand for it. I'll probably stick to wasm builds only in
-this repository, though, so if you need an asm.js build for browsers that
-don't yet support wasm, you should probably go with the original project
-instead.
+Works in Node.js and modern browsers.
 
 ## Overview of changes made to the original project
 
