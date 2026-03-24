@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.2.0
+
+Handle WASM file loading errors by rejecting the promise.
+
+Closes [#33](https://github.com/noppa/xmllint-wasm/issues/33).
+
 ## 5.1.0
 
 Add support for xmllint's `--stream` option, which is useful when  
@@ -114,4 +120,3 @@ No known breaking changes to 2.0.0.
   `normalization` ([PR #3](https://github.com/noppa/xmllint-wasm/pull/3))
 * Upgrade libxml2 version to 2.9.12 (fixes [#4](https://github.com/noppa/xmllint-wasm/issues/4) &
   [CVE-2021-3541](https://gitlab.gnome.org/GNOME/libxml2/-/commit/8598060bacada41a0eb09d95c97744ff4e428f8e))
-
