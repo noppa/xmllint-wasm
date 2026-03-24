@@ -45,6 +45,18 @@
 				stderr += text + '\n';
 			},
 			onExit,
+			onAbort(reason) {
+				const message = {
+					exitCode: -1,
+					stdout: '',
+					stderr: 'WASM Abort: ' + reason,
+				};
+				// #ifdef node
+				parentPort.postMessage(message);
+				// #ifdef browser
+				postMessage(message);
+				// #endif
+			},
 			wasmMemory,
 			// #ifdef browser
 			locateFile(path) {
