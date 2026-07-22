@@ -332,7 +332,7 @@ class XMLLint {
 		}
 
 		if (options.modifyArguments) {
-			args = opts.modifyArguments(args);
+			args = options.modifyArguments(args);
 			if (!Array.isArray(args)) {
 				throw new Error('modifyArguments must return an array of arguments');
 			}
