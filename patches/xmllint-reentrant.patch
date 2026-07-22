@@ -1,0 +1,29 @@
+Make xmllintMain reset its statics on every call.
+
+xmllint is written as a program that runs once and exits: its options and its
+exit status live in file-scope statics. This build keeps one Emscripten
+instance alive and calls main once per document, so those statics carry over —
+after a document fails, every later one is reported as failing too, while the
+output still says it validates.
+
+xmllint.c already resets all of it, guarded by XMLLINT_FUZZ, because libxml2's
+own fuzzer drives xmllintMain in a loop the same way. That flag cannot be used
+here: it also moves diagnostics from stderr to stdout, where they would be
+indistinguishable from --format output, and it drops the no-net entity loader
+for --nonet. So the reset gets a guard of its own.
+
+--- a/xmllint.c
++++ b/xmllint.c
+@@ -3128,7 +3128,11 @@ xmllintMain(int argc, const char **argv) {
+     int nocatalogs = 0;
+ #endif
+ 
+-#ifdef XMLLINT_FUZZ
++/* Reset every static this program holds, so that a second call to xmllintMain
++   in the same process starts clean. XMLLINT_FUZZ enables it for the fuzzer,
++   which also wants diagnostics on stdout and its own main(); a host that keeps
++   one instance alive across documents wants only the reset. */
++#if defined(XMLLINT_FUZZ) || defined(XMLLINT_REENTRANT)
+ #ifdef LIBXML_DEBUG_ENABLED
+     shell = 0;
+     debugent = 0;
