@@ -65,6 +65,13 @@
 		});
 
 		module = new Promise((resolve, reject) => {
+			// #34 established that a wasm file that cannot be loaded reaches the
+			// caller as a WASM Abort. Keep that shape: onAbort does not see this
+			// one, because the factory rejects before the runtime exists.
+			const abort = (err) => reject(
+				new Error('WASM Abort: ' + ((err && err.message) || String(err)))
+			);
+
 			const m = Module({
 				// TODO: We could eagerly start sending stdout to the parent thread while
 				// waiting for more. Or we could probably use some other, more efficient
@@ -77,7 +84,7 @@
 				printErr(text) {
 					stderr += text + '\n';
 				},
-				onAbort: (err) => reject(err),
+				onAbort: abort,
 				onExit: (exitCode) => {onExit(exitCode); reject();},
 				wasmMemory,
 				// #ifdef browser
@@ -94,6 +101,8 @@
 					resolve(m);
 				}
 			});
+
+			Promise.resolve(m).catch(abort);
 		});
 	}
 	async function ensureModule() {
@@ -156,22 +165,25 @@
 		if (!data.type) throw new Error('XMLLint worker: Expecting message type in worker message');
 		if (!data.seq) throw new Error('XMLLint worker: Expecting sequence number in worker message');
 
-		switch(data.type) {
-		case 'INIT':
-			enqueue(() => init(data));
-			break;
-		case 'MOUNT':
-			enqueue(() => mount(data));
-			break;
-		case 'ADDFILES':
-			enqueue(() => addFile(data));
-			break;
-		case 'PROCESS':
-			enqueue(() => process(data));
-			break;
-		default:
+		const handlers = {
+			INIT: init,
+			MOUNT: mount,
+			ADDFILES: addFile,
+			PROCESS: process
+		};
+
+		const handler = handlers[data.type];
+		if (!handler) {
 			throw new Error(`XMLLint worker: Unknown message type ${data.type}`);
 		}
+
+		// A handler that throws has to answer the message that caused it. Left to
+		// reject on its own it would surface as an unhandled rejection here and as
+		// a call that never settles on the other side.
+		enqueue(() => handler(data).catch((err) => post({
+			seq: data.seq,
+			error: (err && err.message) || String(err)
+		})));
 	}
 
 

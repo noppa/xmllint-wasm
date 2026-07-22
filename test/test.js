@@ -316,6 +316,80 @@ async function testWithFilesInSubdirectories() {
 	assert.deepEqual({valid, errors}, {valid: true, errors: []});
 }
 
+// The point of keeping an instance alive is that documents share it. Nothing
+// one document does may reach the next: xmllint holds its options and its exit
+// status in statics, so a run that fails leaves them set unless the build
+// resets them, and every later document is then reported as failing while the
+// output still says it validates.
+async function testKeepAliveDoesNotCarryVerdicts() {
+	const linter = xmllint.XMLLint.init();
+	try {
+		linter.mount(schemaOptions.preload);
+
+		const verdicts = [];
+		for (const xml of [xmlValid, xmlValid, xmlInvalid, xmlValid, xmlInvalid]) {
+			linter.addFile('doc.xml', xml);
+			linter.addFile('test.xsd', schemaOptions.schema);
+			const result = await linter.process({
+				args: ['--schema', 'test.xsd', '--noout', 'doc.xml'],
+			});
+			verdicts.push(result.valid);
+		}
+
+		assert.deepEqual(verdicts, [true, true, false, true, false]);
+	} finally {
+		linter.terminate();
+	}
+}
+
+// The same documents through the same instance must reach the same verdicts as
+// the one-shot API, which gets a fresh runtime every time.
+async function testKeepAliveAgreesWithValidateXML() {
+	const linter = xmllint.XMLLint.init();
+	try {
+		linter.mount(schemaOptions.preload);
+
+		for (const [name, xml] of [['valid', xmlValid], ['invalid', xmlInvalid]]) {
+			const oneShot = await xmllint.validateXML({
+				xml: {fileName: 'doc.xml', contents: xml},
+				...schemaOptions,
+			});
+
+			linter.addFile('doc.xml', xml);
+			linter.addFile('test.xsd', schemaOptions.schema);
+			const kept = await linter.process({
+				args: ['--schema', 'test.xsd', '--noout', 'doc.xml'],
+			});
+
+			assert.equal(kept.valid, oneShot.valid, `${name}: verdicts differ`);
+			assert.equal(kept.errors.length, oneShot.errors.length, `${name}: error counts differ`);
+		}
+	} finally {
+		linter.terminate();
+	}
+}
+
+// A call that cannot be answered has to reject rather than hang.
+async function testKeepAliveRejectsOnTerminate() {
+	const linter = xmllint.XMLLint.init();
+	linter.mount(schemaOptions.preload);
+	linter.addFile('doc.xml', xmlValid);
+	linter.addFile('test.xsd', schemaOptions.schema);
+
+	const pending = linter.process({
+		args: ['--schema', 'test.xsd', '--noout', 'doc.xml'],
+	});
+	linter.terminate();
+
+	let error;
+	try {
+		await pending;
+	} catch (err) {
+		error = err;
+	}
+	assert(error, 'Expected the outstanding call to reject when the worker is terminated');
+}
+
 runTests(
 	testWithValidFile,
 	testWithValidFileForFormat,
@@ -329,4 +403,7 @@ runTests(
 	testWithUnexpectedWorkerMessages,
 	testWithLargeFile,
 	testWithMissingWasmFile,
+	testKeepAliveDoesNotCarryVerdicts,
+	testKeepAliveAgreesWithValidateXML,
+	testKeepAliveRejectsOnTerminate,
 );

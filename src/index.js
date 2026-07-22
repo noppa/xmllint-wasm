@@ -240,9 +240,10 @@ class XMLLint {
 				reject = prom.reject;
 			} else {
 				resolve = () => {};
-				reject = (err) => {
-					throw err;
-				};
+				// INIT and MOUNT are posted without a promise of their own, so a
+				// failure in one has no single caller to report to — and it is not
+				// survivable either, since every later call is built on it.
+				reject = (err) => this._failAll(err);
 			}
 
 			this.pending.delete(data.seq);
@@ -272,11 +273,10 @@ class XMLLint {
 		};
 
 		const onerror = (err) => {
-			if (this.pendingProcess) {
-				this.pendingProcess.reject(err);
-				this.pendingProcess = null;
-			}
-			console.error('XMLLint Worker Error:', err);
+			// A worker that failed answers nothing further, so everything waiting on
+			// it has to be told. Loading the wasm file is the failure that reaches
+			// here in practice.
+			this._failAll(err);
 		};
 
 		this.listen('message', onmessage);
@@ -349,14 +349,22 @@ class XMLLint {
 		});
 	}
 
+	/** Rejects everything outstanding. Nothing survives the instance failing. */
+	_failAll(err) {
+		const pending = [...this.pending.values()];
+		this.pending.clear();
+		for (const prom of pending) prom.reject(err);
+	}
+
 	terminate() {
 		if (this.worker) {
 			this.worker.terminate();
 			this.worker = null;
 		}
 
-		const err = new Error('Worker terminated'); // let's be gentle and use the error from here, this helps debugging for our users
-		for (const pending of this.pending.values()) pending.reject(err);
+		// Use the error from here rather than the call site: it points at the
+		// terminate, which is what a user debugging this needs to see.
+		this._failAll(new Error('Worker terminated'));
 	}
 
 	[Symbol.dispose]() {
