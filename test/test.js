@@ -264,6 +264,25 @@ async function testWithMissingWasmFile() {
 	}
 }
 
+async function testWithFilesInSubdirectories() {
+	// FS.writeFile does not create parent directories, so a fileName containing
+	// a slash used to fail with ENOENT. Schema sets that import each other by
+	// relative path depend on this working.
+	const schema = fs.readFileSync('./test/test.xsd', 'utf8')
+		.replace('schemaLocation="comment.xsd"', 'schemaLocation="../shared/comment.xsd"');
+
+	const {valid, errors} = await xmllint.validateXML({
+		xml: {fileName: 'valid.xml', contents: xmlValid},
+		schema: [{fileName: 'main/test.xsd', contents: schema}],
+		preload: [{
+			fileName: 'shared/comment.xsd',
+			contents: fs.readFileSync('./test/comment.xsd', 'utf8'),
+		}],
+	});
+
+	assert.deepEqual({valid, errors}, {valid: true, errors: []});
+}
+
 runTests(
 	testWithValidFile,
 	testWithValidFileForFormat,
@@ -273,6 +292,7 @@ runTests(
 	testWithInvalidFileName,
 	testWithCustomOptions,
 	testWithTwoFiles,
+	testWithFilesInSubdirectories,
 	testWithLargeFile,
 	testWithMissingWasmFile,
 );
