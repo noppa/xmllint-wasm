@@ -150,9 +150,17 @@ function parseErrors(/** @type {string} */ output) {
 	});
 }
 
+// Our own messages are tagged with this key so that both sides of the
+// worker channel can tell them apart from unrelated messages that the
+// runtime might send over the same channel, like the "watch:require"
+// messages Node.js sends when running in watch mode.
+// https://github.com/noppa/xmllint-wasm/issues/37
+const messageKey = 'xmllint-wasm';
+
 /** @type {import("./index").validateXML} */
 function validateXML(options) {
 	const preprocessedOptions = preprocessOptions(options);
+	preprocessedOptions[messageKey] = true;
 	var worker;
 
 	return new Promise(function validateXMLPromiseCb(resolve, reject) {
@@ -162,6 +170,10 @@ function validateXML(options) {
 			// #ifdef node
 			var data = event;
 			// #endif
+			if (!data || data[messageKey] !== true) {
+				// Not a message from our worker, ignore it.
+				return;
+			}
 
 			const valid = validationSucceeded(data.exitCode);
 			if (valid === null) {

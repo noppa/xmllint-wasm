@@ -227,6 +227,39 @@ async function testWithLargeFile() {
 	assert(resultUsingStreaming.valid);
 }
 
+async function testWithUnexpectedWorkerMessages() {
+	// Node.js sends messages of its own, like {'watch:require': [...]} in watch
+	// mode, over the same channel that we use to talk with the worker. Both sides
+	// should ignore messages that are not ours instead of crashing on them.
+	// https://github.com/noppa/xmllint-wasm/issues/37
+	const workerThreads = require('worker_threads');
+	const OriginalWorker = workerThreads.Worker;
+	const unrelatedMessage = {
+		'watch:require': ['/app/node_modules/xmllint-wasm/xmllint-node.js'],
+	};
+
+	class NoisyWorker extends OriginalWorker {
+		postMessage(value) {
+			// By the time we get here, the parent has already subscribed to the
+			// worker's messages, so we can send noise to both directions.
+			super.postMessage(unrelatedMessage);
+			this.emit('message', unrelatedMessage);
+			return super.postMessage(value);
+		}
+	}
+
+	workerThreads.Worker = NoisyWorker;
+	try {
+		const {valid, errors} = await xmllint.validateXML({
+			xml: {fileName: 'valid.xml', contents: xmlValid},
+			...schemaOptions,
+		});
+		assert.deepEqual({valid, errors}, {valid: true, errors: []});
+	} finally {
+		workerThreads.Worker = OriginalWorker;
+	}
+}
+
 async function runTests(...tests) {
 	for (const test of tests) {
 		try {
@@ -293,6 +326,7 @@ runTests(
 	testWithCustomOptions,
 	testWithTwoFiles,
 	testWithFilesInSubdirectories,
+	testWithUnexpectedWorkerMessages,
 	testWithLargeFile,
 	testWithMissingWasmFile,
 );
