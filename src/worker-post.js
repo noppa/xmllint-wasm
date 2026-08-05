@@ -3,28 +3,42 @@
 	const {parentPort} = require('worker_threads');
 	// #endif
 
+	// Our own messages are tagged with this key so that both sides of the
+	// worker channel can tell them apart from unrelated messages that the
+	// runtime might send over the same channel, like the "watch:require"
+	// messages Node.js sends when running in watch mode.
+	// https://github.com/noppa/xmllint-wasm/issues/37
+	const messageKey = 'xmllint-wasm';
+
 	let stdout = '';
 	let stderr = '';
 
-	function onExit(exitCode) {
-		const message = {
-			exitCode,
-			stdout,
-			stderr,
-		};
+	function postToParent(message) {
+		message[messageKey] = true;
 		// #ifdef node
 		parentPort.postMessage(message);
 		// #ifdef browser
 		postMessage(message);
 		// #endif
+	}
+
+	function onExit(exitCode) {
+		postToParent({
+			exitCode,
+			stdout,
+			stderr,
+		});
 	};
-	// #endif
 	function onWorkerMessage(event) {
 		// #ifdef browser
 		var data = event.data;
 		// #ifdef node
 		var data = event;
 		// #endif
+		if (!data || data[messageKey] !== true) {
+			// Not a message from us, ignore it.
+			return;
+		}
 		const wasmMemory = new WebAssembly.Memory({
 			initial: data.initialMemory,
 			maximum: data.maxMemory
@@ -46,16 +60,11 @@
 			},
 			onExit,
 			onAbort(reason) {
-				const message = {
+				postToParent({
 					exitCode: -1,
 					stdout: '',
 					stderr: 'WASM Abort: ' + reason,
-				};
-				// #ifdef node
-				parentPort.postMessage(message);
-				// #ifdef browser
-				postMessage(message);
-				// #endif
+				});
 			},
 			wasmMemory,
 			// #ifdef browser
