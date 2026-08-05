@@ -1,5 +1,23 @@
 # Changelog
 
+## 5.3.0
+
+### Create parent directories for input files
+
+We now allow schemas that reference files in other directories. E.g.  
+```typescript
+await validateXML({
+  xml: [{fileName: 'doc.xml', contents: xml}],
+  schema: [{fileName: 'main/test.xsd', contents: schema}],
+  preload: [{fileName: 'shared/comment.xsd', contents: comment}],
+});
+```
+PR [#36](https://github.com/noppa/xmllint-wasm/pull/36), thanks [@dtretyakov](https://github.com/dtretyakov)!
+
+### Ignore worker events from outiside of the library
+
+Closes [#37](https://github.com/noppa/xmllint-wasm/issues/37), "library fails in node.js v24+ watch mode".  
+
 ## 5.2.0
 
 Handle WASM file loading errors by rejecting the promise.
