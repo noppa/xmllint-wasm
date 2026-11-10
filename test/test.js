@@ -427,6 +427,41 @@ async function testKeepAliveProcessRequiresArgs() {
 	}
 }
 
+// Adding a file with the same name again replaces it, and a later mount has
+// to remove it only once.
+async function testKeepAliveRemountAfterReplacingFiles() {
+	const linter = xmllint.XMLLint.init();
+	const args = ['--schema', 'test.xsd', '--noout', 'doc.xml'];
+	try {
+		for (let i = 0; i < 2; i++) {
+			linter.mount(schemaOptions.preload);
+			linter.addFile('test.xsd', schemaOptions.schema);
+			linter.addFile('doc.xml', xmlValid);
+			linter.addFile('doc.xml', xmlInvalid);
+			const result = await linter.process({args});
+			assert.equal(result.valid, false, `round ${i}`);
+		}
+	} finally {
+		linter.terminate();
+	}
+}
+
+// File system errors used to reach the caller as "[object Object]".
+async function testKeepAliveFileSystemErrorMessage() {
+	const linter = xmllint.XMLLint.init();
+	try {
+		linter.addFile('a', xmlValid);
+		// "a" is a file, so it cannot be a directory too.
+		linter.addFile('a/b.xml', xmlValid);
+		await assert.rejects(
+			linter.process({args: ['--noout', 'a']}),
+			/could not write file "a\/b.xml"/
+		);
+	} finally {
+		linter.terminate();
+	}
+}
+
 runTests(
 	testWithValidFile,
 	testWithValidFileForFormat,
@@ -445,4 +480,6 @@ runTests(
 	testKeepAliveRejectsOnTerminate,
 	testKeepAliveMemoryOptions,
 	testKeepAliveProcessRequiresArgs,
+	testKeepAliveRemountAfterReplacingFiles,
+	testKeepAliveFileSystemErrorMessage,
 );

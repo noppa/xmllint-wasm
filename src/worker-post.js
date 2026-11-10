@@ -15,7 +15,9 @@
 	let stderr = '';
 	let wasmMemory;
 	let module;
-	let files = [];
+	// Names of the files added with mount or addFile, to remove on the next mount.
+	// A Set, because adding a file with the same name again replaces it.
+	const files = new Set();
 
 	function post(message) {
 		message[messageKey] = true;
@@ -121,27 +123,40 @@
 		return await module;
 	}
 
-	function writeToVFS(mod, file) {
-		const path = '/' + file['fileName'];
-		// FS.writeFile does not create missing parent directories, so a fileName
-		// containing a slash fails with ENOENT. Schema sets that import each
-		// other by relative path need those directories to exist.
-		const dir = path.substring(0, path.lastIndexOf('/'));
-		if (dir.length > 1) {
-			mod.__fs_createPath('/', dir.substring(1), true, true);
+	// Emscripten's file system errors carry no message, and their errno field is
+	// renamed by the Closure compiler, so name the operation and the file instead.
+	function fsOperation(description, fileName, fn) {
+		try {
+			fn();
+		} catch (err) {
+			throw new Error(`XMLLint worker: could not ${description} "${fileName}" (${(err && err.name) || err})`);
 		}
-		files.push(file['fileName']);
-		mod.__fs_write(path, file['contents']);
+	}
+
+	function writeToVFS(mod, file) {
+		const fileName = file['fileName'];
+		const path = '/' + fileName;
+		fsOperation('write file', fileName, () => {
+			// FS.writeFile does not create missing parent directories, so a fileName
+			// containing a slash fails with ENOENT. Schema sets that import each
+			// other by relative path need those directories to exist.
+			const dir = path.substring(0, path.lastIndexOf('/'));
+			if (dir.length > 1) {
+				mod.__fs_createPath('/', dir.substring(1), true, true);
+			}
+			mod.__fs_write(path, file['contents']);
+		});
+		files.add(fileName);
 	}
 
 	async function mount(data) {
 		const mod = await ensureModule();
 
-		files.forEach(file => {
-			mod.__fs_unlink('/' + file);
+		files.forEach(fileName => {
+			fsOperation('remove file', fileName, () => mod.__fs_unlink('/' + fileName));
 		});
 
-		files = [];
+		files.clear();
 		data.files.forEach((file) => writeToVFS(mod, file));
 	}
 
