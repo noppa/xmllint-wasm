@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 6.0.0 (unreleased)
 
 ### Keep an xmllint instance alive between calls
 
@@ -21,6 +21,11 @@ try {
 ```
 
 `validateXML` keeps working as before, and is now implemented on top of `XMLLint`.
+
+`XMLLint` instances are disposable, so they can be declared with `using`.
+The TypeScript definitions now refer to `Symbol.dispose`, which requires the
+`esnext.disposable` lib (or `esnext`) in your `tsconfig.json`, unless you use `skipLibCheck`.
+This is a **breaking change** for TypeScript users.
 
 To make xmllint safe to run several times in the same runtime, the build now
 patches libxml2's xmllint to reset its global state between runs.

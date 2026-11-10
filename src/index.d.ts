@@ -106,36 +106,33 @@ export interface XMLValidationResult {
 
 export function validateXML(options: XMLLintOptions): Promise<XMLValidationResult>;
 
-/**
- * Memory configuration for XMLLint.init, in 64KiB Web Assembly pages.
- * See memoryPages for useful constants.
- */
-export interface XMLLintMemoryConfig {
-  readonly initialMemory: number;
-  readonly maxMemory: number;
+export interface XMLLintInitOptions {
+  /**
+   * Initial memory capacity, in 64KiB Web Assembly memory pages.
+   * Same as the initialMemoryPages option of validateXML.
+   */
+  readonly initialMemoryPages?: number;
+  /**
+   * Maximum memory capacity, in 64KiB Web Assembly memory pages.
+   * Same as the maxMemoryPages option of validateXML.
+   */
+  readonly maxMemoryPages?: number;
 }
 
 /**
- * Options for XMLLint#process when passing the xmllint command line arguments directly.
- * The files referenced in the arguments need to be added with mount or addFile first.
+ * Options for XMLLint#process. The files referenced in the arguments
+ * need to be added with mount or addFile first.
  */
-export interface XMLLintProcessArgsOptions {
+export interface XMLLintProcessOptions {
+  /**
+   * The xmllint command line arguments, e.g. ['--schema', 'main.xsd', '--noout', 'doc.xml'].
+   */
   readonly args: ReadonlyArray<string>;
+  /**
+   * Same as the modifyArguments option of validateXML.
+   */
   readonly modifyArguments?: (args: string[]) => string[];
 }
-
-/**
- * Options for XMLLint#process using the same options as validateXML.
- * The xml and schema files are added to the instance's file system
- * (replacing files with the same name) before running xmllint.
- * Preloads and memory options are not supported here: add files with
- * mount or addFile, and configure memory in XMLLint.init.
- */
-export type XMLLintProcessFileOptions =
-  Omit<XMLLintOptionsBase, 'preload' | 'initialMemoryPages' | 'maxMemoryPages' | 'disableFileNameValidation'>
-  & (Schema | Normalization | (Schema & Normalization));
-
-export type XMLLintProcessOptions = XMLLintProcessArgsOptions | XMLLintProcessFileOptions;
 
 /**
  * An xmllint instance that keeps its worker, Web Assembly runtime and
@@ -143,7 +140,8 @@ export type XMLLintProcessOptions = XMLLintProcessArgsOptions | XMLLintProcessFi
  * documents against the same (large) schema set, so that the schema files
  * need to be sent to the worker only once.
  *
- * Remember to call terminate when you are done with the instance.
+ * Remember to call terminate when you are done with the instance,
+ * or declare it with `using`.
  */
 export class XMLLint {
   private constructor();
@@ -151,7 +149,7 @@ export class XMLLint {
   /**
    * Starts a new worker and the Web Assembly runtime in it.
    */
-  static init(memory?: XMLLintMemoryConfig): XMLLint;
+  static init(options?: XMLLintInitOptions): XMLLint;
 
   /**
    * Adds files to the in-memory file system, removing all files
@@ -174,6 +172,11 @@ export class XMLLint {
    * Stops the worker. Calls that are still pending are rejected.
    */
   terminate(): void;
+
+  /**
+   * Same as terminate. Allows `using linter = XMLLint.init()`.
+   */
+  [Symbol.dispose](): void;
 }
 
 interface MemoryPagesConstant {

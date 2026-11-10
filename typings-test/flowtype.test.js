@@ -37,21 +37,22 @@ async function example() {
 
 async function keepAliveExample(schema: string, xml: string) {
 	const linter = xmllint.XMLLint.init({
-		initialMemory: xmllint.memoryPages.defaultInitialMemoryPages,
-		maxMemory: 2 * xmllint.memoryPages.GiB,
+		initialMemoryPages: xmllint.memoryPages.defaultInitialMemoryPages,
+		maxMemoryPages: 2 * xmllint.memoryPages.GiB,
 	});
 	try {
 		linter.mount([{fileName: 'schema.xsd', contents: schema}]);
 		linter.addFile('doc.xml', xml);
-		const fromArgs = await linter.process({args: ['--schema', 'schema.xsd', '--noout', 'doc.xml']});
-		const fromOptions = await linter.process({xml, schema, normalization: 'format'});
-		console.log(fromArgs.valid, fromOptions.normalized);
+		const result = await linter.process({
+			args: ['--schema', 'schema.xsd', '--noout', 'doc.xml'],
+			modifyArguments: (args) => [...args, '--nonet'],
+		});
+		console.log(result.valid, result.errors);
 
 		linter.process({
+			// Error expected: process only accepts xmllint arguments, not validateXML's options
 			xml,
 			schema,
-			// Error expected: preload is not supported in process, use mount or addFile
-			preload: [{fileName: 'other.xsd', contents: schema}],
 		});
 	} finally {
 		linter.terminate();

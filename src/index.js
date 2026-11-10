@@ -86,14 +86,18 @@ function preprocessOptions(options) {
 			schemas,
 			preloads,
 		},
-		memory: {
-			initialMemory: options.initialMemoryPages || memoryPages.defaultInitialMemoryPages,
-			maxMemory: options.maxMemoryPages || memoryPages.defaultMaxMemoryPages,
-		},
+		memory: resolveMemoryOptions(options),
 		original: options
 	};
 
 	return opts;
+}
+
+function resolveMemoryOptions(options) {
+	return {
+		initialMemory: options.initialMemoryPages || memoryPages.defaultInitialMemoryPages,
+		maxMemory: options.maxMemoryPages || memoryPages.defaultMaxMemoryPages,
+	};
 }
 
 function validationSucceeded(exitCode) {
@@ -170,7 +174,10 @@ async function validateXML(options) {
 	validateOptions(preprocessed);
 
 	try {
-		linter = XMLLint.init(preprocessed.memory);
+		linter = XMLLint.init({
+			initialMemoryPages: options.initialMemoryPages,
+			maxMemoryPages: options.maxMemoryPages,
+		});
 		linter.mount([...preprocessed.files.xmls, ...preprocessed.files.schemas, ...preprocessed.files.preloads]);
 		ret = await linter.process({args: preprocessed.args, modifyArguments: options.modifyArguments});
 	} finally {
@@ -183,7 +190,11 @@ async function validateXML(options) {
 }
 
 class XMLLint {
-	constructor(memoryCfg) {
+	/**
+	 * Use XMLLint.init instead.
+	 * @param {{initialMemory: number, maxMemory: number}} memory
+	 */
+	constructor(memory) {
 		this.worker = null;
 		this.messageId = 0;
 		this.pending = new Map();
@@ -202,26 +213,19 @@ class XMLLint {
 
 		this._bindListeners();
 
-		if (memoryCfg) {
-			this._post({
-				seq: ++this.messageId,
-				type: 'INIT',
-				initialMemory: memoryCfg.initialMemory,
-				maxMemory: memoryCfg.maxMemory
-			});
-		} else {
-			this._post({
-				seq: ++this.messageId,
-				type: 'INIT',
-				initialMemory: memoryPages.defaultInitialMemoryPages,
-				maxMemory: memoryPages.defaultMaxMemoryPages
-			});
-		}
+		this._post({
+			seq: ++this.messageId,
+			type: 'INIT',
+			initialMemory: memory.initialMemory,
+			maxMemory: memory.maxMemory
+		});
 	}
 
-	static init(memoryCfg) {
-		// TODO add type: {initialMemory, maxMemory}
-		return new XMLLint(memoryCfg);
+	/** @type {typeof import("./index").XMLLint.init} */
+	static init(options) {
+		const memory = resolveMemoryOptions(options || {});
+		validateMemoryLimitOptions(memory);
+		return new XMLLint(memory);
 	}
 
 	/**
@@ -328,33 +332,19 @@ class XMLLint {
 	 * Returns a Promise that resolves when the worker flushes stdout/stderr
 	 */
 	process(options) {
-		// TODO Add type: {args, modifyArguments} | {xml, schema, extension, normalization, stream}
-		const seq = ++this.messageId;
-
 		let args = options.args;
-		if (args === undefined || (Array.isArray(args) && args.length == 0)) {
-			const processed = preprocessOptions(options);
-			args = processed.args;
-
-			const files = processed.files;
-			const toAdd = files.xmls.concat(files.schemas);
-
-			if (toAdd.length > 0) {
-				this._post({
-					seq: ++this.messageId,
-					type: 'ADDFILES',
-					files: toAdd
-				});
-			}
+		if (!Array.isArray(args) || args.length === 0) {
+			return Promise.reject(new Error('XMLLint process: args must be a non-empty array of xmllint arguments'));
 		}
 
 		if (options.modifyArguments) {
 			args = options.modifyArguments(args);
 			if (!Array.isArray(args)) {
-				throw new Error('modifyArguments must return an array of arguments');
+				return Promise.reject(new Error('modifyArguments must return an array of arguments'));
 			}
 		}
 
+		const seq = ++this.messageId;
 		return new Promise((resolve, reject) => {
 			this.pending.set(seq, { resolve, reject });
 

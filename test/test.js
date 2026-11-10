@@ -390,6 +390,43 @@ async function testKeepAliveRejectsOnTerminate() {
 	assert(error, 'Expected the outstanding call to reject when the worker is terminated');
 }
 
+async function testKeepAliveMemoryOptions() {
+	assert.throws(
+		() => xmllint.XMLLint.init({maxMemoryPages: xmllint.memoryPages.max + 1}),
+		/Invalid memory options/
+	);
+
+	const linter = xmllint.XMLLint.init({
+		initialMemoryPages: xmllint.memoryPages.MiB * 30,
+		maxMemoryPages: xmllint.memoryPages.GiB,
+	});
+	try {
+		linter.mount(schemaOptions.preload);
+		linter.addFile('doc.xml', xmlValid);
+		linter.addFile('test.xsd', schemaOptions.schema);
+		const result = await linter.process({
+			args: ['--schema', 'test.xsd', '--noout', 'doc.xml'],
+		});
+		assert.equal(result.valid, true);
+	} finally {
+		linter.terminate();
+	}
+}
+
+// process only takes xmllint arguments. validateXML's options would have to
+// send the schema files on every call, which defeats keeping the instance alive.
+async function testKeepAliveProcessRequiresArgs() {
+	const linter = xmllint.XMLLint.init();
+	try {
+		await assert.rejects(
+			linter.process({xml: xmlValid, schema: schemaOptions.schema}),
+			/args must be a non-empty array/
+		);
+	} finally {
+		linter.terminate();
+	}
+}
+
 runTests(
 	testWithValidFile,
 	testWithValidFileForFormat,
@@ -406,4 +443,6 @@ runTests(
 	testKeepAliveDoesNotCarryVerdicts,
 	testKeepAliveAgreesWithValidateXML,
 	testKeepAliveRejectsOnTerminate,
+	testKeepAliveMemoryOptions,
+	testKeepAliveProcessRequiresArgs,
 );

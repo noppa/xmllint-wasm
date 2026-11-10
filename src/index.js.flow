@@ -121,57 +121,33 @@ export type XMLValidationResult = {|
 
 declare export function validateXML(options: XMLLintOptions): Promise<XMLValidationResult>;
 
-/**
- * Memory configuration for XMLLint.init, in 64KiB Web Assembly pages.
- * See memoryPages for useful constants.
- */
-export type XMLLintMemoryConfig = {|
-  +initialMemory: number;
-  +maxMemory: number;
+export type XMLLintInitOptions = {|
+  /**
+   * Initial memory capacity, in 64KiB Web Assembly memory pages.
+   * Same as the initialMemoryPages option of validateXML.
+   */
+  +initialMemoryPages?: number;
+  /**
+   * Maximum memory capacity, in 64KiB Web Assembly memory pages.
+   * Same as the maxMemoryPages option of validateXML.
+   */
+  +maxMemoryPages?: number;
 |};
 
 /**
- * Options for XMLLint#process when passing the xmllint command line arguments directly.
- * The files referenced in the arguments need to be added with mount or addFile first.
+ * Options for XMLLint#process. The files referenced in the arguments
+ * need to be added with mount or addFile first.
  */
-export type XMLLintProcessArgsOptions = {|
+export type XMLLintProcessOptions = {|
+  /**
+   * The xmllint command line arguments, e.g. ['--schema', 'main.xsd', '--noout', 'doc.xml'].
+   */
   +args: $ReadOnlyArray<string>;
+  /**
+   * Same as the modifyArguments option of validateXML.
+   */
   +modifyArguments?: (args: string[]) => string[];
 |};
-
-type BaseXMLLintProcessFileOptions = {|
-  +xml: XMLInput | $ReadOnlyArray<XMLInput>;
-  +extension?: 'schema' | 'relaxng';
-  +stream?: boolean;
-  +modifyArguments?: (args: string[]) => string[];
-|};
-
-export type XMLLintProcessFileOptionsForValidation = {|
-  +schema: XMLInput | $ReadOnlyArray<XMLInput>;
-  ...BaseXMLLintProcessFileOptions,
-|};
-export type XMLLintProcessFileOptionsForNormalization = {|
-  +normalization: 'format' | 'c14n',
-  ...BaseXMLLintProcessFileOptions,
-|};
-export type XMLLintProcessFileOptionsForValidationAndNormalization = {|
-  ...XMLLintProcessFileOptionsForValidation,
-  ...XMLLintProcessFileOptionsForNormalization,
-|};
-
-/**
- * Options for XMLLint#process using the same options as validateXML.
- * The xml and schema files are added to the instance's file system
- * (replacing files with the same name) before running xmllint.
- * Preloads and memory options are not supported here: add files with
- * mount or addFile, and configure memory in XMLLint.init.
- */
-export type XMLLintProcessFileOptions =
-  | XMLLintProcessFileOptionsForValidation
-  | XMLLintProcessFileOptionsForNormalization
-  | XMLLintProcessFileOptionsForValidationAndNormalization;
-
-export type XMLLintProcessOptions = XMLLintProcessArgsOptions | XMLLintProcessFileOptions;
 
 /**
  * An xmllint instance that keeps its worker, Web Assembly runtime and
@@ -185,7 +161,7 @@ declare export class XMLLint {
   /**
    * Starts a new worker and the Web Assembly runtime in it.
    */
-  static init(memory?: XMLLintMemoryConfig): XMLLint;
+  static init(options?: XMLLintInitOptions): XMLLint;
 
   /**
    * Adds files to the in-memory file system, removing all files

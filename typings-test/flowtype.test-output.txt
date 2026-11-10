@@ -25,39 +25,65 @@ References:
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ [4]
 
 
-Error ------------------------------------------------------------------------------------------- flowtype.test.js:50:18
+Error ------------------------------------------------------------------------------------------- flowtype.test.js:52:18
 
-Cannot call `linter.process` with object literal bound to `options` because: [incompatible-call]
- - Either property `preload` is missing in `XMLLintProcessArgsOptions` [1] but exists in object literal [2].
- - Or property `preload` is missing in `XMLLintProcessFileOptionsForValidation` [3] but exists in object literal [2].
- - Or property `preload` is missing in `XMLLintProcessFileOptionsForNormalization` [4] but exists in object literal [2].
- - Or property `preload` is missing in `XMLLintProcessFileOptionsForValidationAndNormalization` [5] but exists in object
-   literal [2].
+Cannot call `linter.process` with object literal bound to `options` because property `args` is missing in object
+literal [1] but exists in `XMLLintProcessOptions` [2]. [prop-missing]
 
-   flowtype.test.js:50:18
+   flowtype.test.js:52:18
                          v
-    50| 		linter.process({
-    51| 			xml,
-    52| 			schema,
-    53| 			// Error expected: preload is not supported in process, use mount or addFile
-    54| 			preload: [{fileName: 'other.xsd', contents: schema}],
-    55| 		});
+    52| 		linter.process({
+    53| 			// Error expected: process only accepts xmllint arguments, not validateXML's options
+    54| 			xml,
+    55| 			schema,
+    56| 		});
+        		^ [1]
+
+References:
+   ../index-node.js.flow:181:20
+   181|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
+                           ^^^^^^^^^^^^^^^^^^^^^ [2]
+
+
+Error ------------------------------------------------------------------------------------------- flowtype.test.js:52:18
+
+Cannot call `linter.process` with object literal bound to `options` because property `schema` is missing in
+`XMLLintProcessOptions` [1] but exists in object literal [2]. [prop-missing]
+
+   flowtype.test.js:52:18
+                         v
+    52| 		linter.process({
+    53| 			// Error expected: process only accepts xmllint arguments, not validateXML's options
+    54| 			xml,
+    55| 			schema,
+    56| 		});
         		^ [2]
 
 References:
-   ../index-node.js.flow:174:37
-   174| export type XMLLintProcessOptions = XMLLintProcessArgsOptions | XMLLintProcessFileOptions;
-                                            ^^^^^^^^^^^^^^^^^^^^^^^^^ [1]
-   ../index-node.js.flow:170:5
-   170|   | XMLLintProcessFileOptionsForValidation
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ [3]
-   ../index-node.js.flow:171:5
-   171|   | XMLLintProcessFileOptionsForNormalization
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ [4]
-   ../index-node.js.flow:172:5
-   172|   | XMLLintProcessFileOptionsForValidationAndNormalization;
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ [5]
+   ../index-node.js.flow:181:20
+   181|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
+                           ^^^^^^^^^^^^^^^^^^^^^ [1]
+
+
+Error ------------------------------------------------------------------------------------------- flowtype.test.js:52:18
+
+Cannot call `linter.process` with object literal bound to `options` because property `xml` is missing in
+`XMLLintProcessOptions` [1] but exists in object literal [2]. [prop-missing]
+
+   flowtype.test.js:52:18
+                         v
+    52| 		linter.process({
+    53| 			// Error expected: process only accepts xmllint arguments, not validateXML's options
+    54| 			xml,
+    55| 			schema,
+    56| 		});
+        		^ [2]
+
+References:
+   ../index-node.js.flow:181:20
+   181|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
+                           ^^^^^^^^^^^^^^^^^^^^^ [1]
 
 
 
-Found 2 errors
+Found 4 errors

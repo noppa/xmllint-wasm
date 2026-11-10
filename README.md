@@ -131,10 +131,9 @@ alive and send the schema files to it only once.
 const {XMLLint, memoryPages} = require('xmllint-wasm');
 
 async function example(documents, schemaFiles) {
-  // The memory config is optional, and given in Web Assembly pages.
+  // Optional, same as the memory options of validateXML.
   const linter = XMLLint.init({
-    initialMemory: memoryPages.defaultInitialMemoryPages,
-    maxMemory: 2 * memoryPages.GiB,
+    maxMemoryPages: 2 * memoryPages.GiB,
   });
   try {
     // Add the schema files to the instance's in-memory file system once.
@@ -159,20 +158,18 @@ async function example(documents, schemaFiles) {
 }
 ```
 
-`process` also accepts the same options as `validateXML`, except for `preload`
-and the memory options. The `xml` and `schema` files are then added to the
-instance's file system before running xmllint, replacing earlier files with
-the same name:
+Unlike `validateXML`, `process` only takes the xmllint command line arguments
+(and optionally `modifyArguments`), so the files they reference need to be
+added with `mount` or `addFile` first.
+
+In environments that support
+[explicit resource management](https://github.com/tc39/proposal-explicit-resource-management),
+you can declare the instance with `using` instead of calling `terminate` yourself.
+With TypeScript, this requires the `esnext.disposable` lib (or `esnext`) in your `tsconfig.json`.
 
 ```javascript
-const result = await linter.process({
-  xml: {fileName: 'doc.xml', contents: doc},
-  schema: {fileName: 'main.xsd', contents: mainSchema},
-});
+using linter = XMLLint.init();
 ```
-
-This sends the schema to the worker on every call, though, so for large schema
-sets prefer `mount` and `args` like in the first example.
 
 Calls to `process` on the same instance are run one at a time, in order.
 xmllint still parses the schema on each call, so the speedup depends on how
