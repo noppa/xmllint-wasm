@@ -45,7 +45,6 @@ async function keepAliveExample(schema: string, xml: string) {
 		await linter.addFile('doc.xml', xml);
 		const result = await linter.process({
 			args: ['--schema', 'schema.xsd', '--noout', 'doc.xml'],
-			modifyArguments: (args) => [...args, '--nonet'],
 		});
 		console.log(result.valid, result.errors, linter.terminated);
 

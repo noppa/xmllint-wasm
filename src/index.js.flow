@@ -143,10 +143,6 @@ export type XMLLintProcessOptions = {|
    * The xmllint command line arguments, e.g. ['--schema', 'main.xsd', '--noout', 'doc.xml'].
    */
   +args: $ReadOnlyArray<string>;
-  /**
-   * Same as the modifyArguments option of validateXML.
-   */
-  +modifyArguments?: (args: string[]) => string[];
 |};
 
 /**

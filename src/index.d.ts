@@ -128,10 +128,6 @@ export interface XMLLintProcessOptions {
    * The xmllint command line arguments, e.g. ['--schema', 'main.xsd', '--noout', 'doc.xml'].
    */
   readonly args: ReadonlyArray<string>;
-  /**
-   * Same as the modifyArguments option of validateXML.
-   */
-  readonly modifyArguments?: (args: string[]) => string[];
 }
 
 /**

@@ -173,13 +173,21 @@ async function validateXML(options) {
 	const preprocessed = preprocessOptions(options);
 	validateOptions(preprocessed);
 
+	let args = preprocessed.args;
+	if (options.modifyArguments) {
+		args = options.modifyArguments(args);
+		if (!Array.isArray(args)) {
+			throw new Error('modifyArguments must return an array of arguments');
+		}
+	}
+
 	try {
 		linter = await XMLLint.init({
 			initialMemoryPages: options.initialMemoryPages,
 			maxMemoryPages: options.maxMemoryPages,
 		});
 		await linter.mount([...preprocessed.files.xmls, ...preprocessed.files.schemas, ...preprocessed.files.preloads]);
-		ret = await linter.process({args: preprocessed.args, modifyArguments: options.modifyArguments});
+		ret = await linter.process({args});
 	} finally {
 		if (linter) {
 			linter.terminate();
@@ -352,16 +360,9 @@ class XMLLint {
 	 * Runs xmllint with the given arguments.
 	 */
 	process(options) {
-		let args = options.args;
+		const args = options.args;
 		if (!Array.isArray(args) || args.length === 0) {
 			return Promise.reject(new Error('XMLLint process: args must be a non-empty array of xmllint arguments'));
-		}
-
-		if (options.modifyArguments) {
-			args = options.modifyArguments(args);
-			if (!Array.isArray(args)) {
-				return Promise.reject(new Error('modifyArguments must return an array of arguments'));
-			}
 		}
 
 		return this._request({type: 'PROCESS', args});

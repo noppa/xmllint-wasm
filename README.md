@@ -159,9 +159,8 @@ async function example(documents, schemaFiles) {
 }
 ```
 
-Unlike `validateXML`, `process` only takes the xmllint command line arguments
-(and optionally `modifyArguments`), so the files they reference need to be
-added with `mount` or `addFile` first.
+Unlike `validateXML`, `process` only takes the xmllint command line arguments,
+so the files they reference need to be added with `mount` or `addFile` first.
 
 In environments that support
 [explicit resource management](https://github.com/tc39/proposal-explicit-resource-management),
