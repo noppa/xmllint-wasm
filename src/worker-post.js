@@ -14,6 +14,10 @@
 	let stdout = '';
 	let stderr = '';
 	let wasmMemory;
+	// Set when the Emscripten runtime has aborted, after which it can't run
+	// anything anymore. Errors are then reported as fatal, so that the caller
+	// knows to stop using the instance.
+	let fatalError = null;
 	let module;
 	// Names of the files added with mount or addFile, to remove on the next mount.
 	// A Set, because adding a file with the same name again replaces it.
@@ -78,9 +82,10 @@
 			// #34 established that a wasm file that cannot be loaded reaches the
 			// caller as a WASM Abort. Keep that shape: onAbort does not see this
 			// one, because the factory rejects before the runtime exists.
-			const abort = (err) => reject(
-				new Error('WASM Abort: ' + ((err && err.message) || String(err)))
-			);
+			const abort = (err) => {
+				fatalError = new Error('WASM Abort: ' + ((err && err.message) || String(err)));
+				reject(fatalError);
+			};
 
 			const m = Module({
 				// TODO: We could eagerly start sending stdout to the parent thread while
@@ -216,7 +221,8 @@
 		// a call that never settles on the other side.
 		enqueue(() => handler(data).catch((err) => post({
 			seq: data.seq,
-			error: (err && err.message) || String(err)
+			error: (err && err.message) || String(err),
+			fatal: fatalError !== null,
 		})));
 	}
 

@@ -491,6 +491,49 @@ async function testKeepAliveWithUsing() {
 	await require('./test-using.js')(xmllint, {xmlValid, schemaOptions});
 }
 
+async function testKeepAliveTerminatedFlag() {
+	const args = ['--schema', 'test.xsd', '--noout', 'doc.xml'];
+	const linter = xmllint.XMLLint.init();
+	try {
+		assert.equal(linter.terminated, false);
+		linter.mount(schemaOptions.preload);
+
+		// Errors that the instance survives don't terminate it.
+		linter.addFile('test.xsd', '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><broken');
+		linter.addFile('doc.xml', xmlValid);
+		await assert.rejects(linter.process({args}), /parser error/);
+		assert.equal(linter.terminated, false);
+	} finally {
+		linter.terminate();
+	}
+
+	assert.equal(linter.terminated, true);
+	await assert.rejects(linter.process({args}), /instance is terminated/);
+	assert.throws(() => linter.addFile('doc.xml', xmlValid), /instance is terminated/);
+	assert.throws(() => linter.mount([]), /instance is terminated/);
+}
+
+// A runtime that failed to start can't be used anymore, so the instance is
+// terminated and the caller knows to create a new one.
+async function testKeepAliveTerminatedOnFatalError() {
+	const path = require('path');
+	let wasmPath = path.resolve(__dirname, '../xmllint.wasm');
+	if (!fs.existsSync(wasmPath)) {
+		wasmPath = path.join(path.dirname(require.resolve('xmllint-wasm')), 'xmllint.wasm');
+	}
+	const tmpPath = wasmPath + '.bak';
+	fs.renameSync(wasmPath, tmpPath);
+	const linter = xmllint.XMLLint.init();
+	try {
+		linter.addFile('doc.xml', xmlValid);
+		await assert.rejects(linter.process({args: ['--noout', 'doc.xml']}), /WASM Abort/);
+		assert.equal(linter.terminated, true);
+	} finally {
+		fs.renameSync(tmpPath, wasmPath);
+		linter.terminate();
+	}
+}
+
 runTests(
 	testWithValidFile,
 	testWithValidFileForFormat,
@@ -513,4 +556,6 @@ runTests(
 	testKeepAliveFileSystemErrorMessage,
 	testKeepAliveDispose,
 	testKeepAliveWithUsing,
+	testKeepAliveTerminatedFlag,
+	testKeepAliveTerminatedOnFatalError,
 );

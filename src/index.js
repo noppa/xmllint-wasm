@@ -198,6 +198,7 @@ class XMLLint {
 		this.worker = null;
 		this.messageId = 0;
 		this.pending = new Map();
+		this._terminated = false;
 
 		// #ifdef browser
 		this.worker = new Worker(new URL('./xmllint-browser.mjs', import.meta.url), { type: 'module' });
@@ -249,6 +250,12 @@ class XMLLint {
 				throw new Error('Message without sequence id');
 			}
 
+			if (data.type === 'EXIT') {
+				// xmllint called exit(), which ends the runtime.
+				this._fail(new Error(`XMLLint worker: xmllint exited with code ${data.exitCode}`));
+				return;
+			}
+
 			let resolve, reject;
 			if (this.pending.has(data.seq)) {
 				const prom = this.pending.get(data.seq);
@@ -256,16 +263,21 @@ class XMLLint {
 				reject = prom.reject;
 			} else {
 				resolve = () => {};
-				// INIT and MOUNT are posted without a promise of their own, so a
-				// failure in one has no single caller to report to — and it is not
-				// survivable either, since every later call is built on it.
+				// INIT, MOUNT and ADDFILES are posted without a promise of their own,
+				// so a failure in one has no single caller to report to. Reject
+				// everything waiting, as those calls may depend on the failed one.
 				reject = (err) => this._failAll(err);
 			}
 
 			this.pending.delete(data.seq);
 
 			if (data.error) {
-				reject(new Error(data.error));
+				const err = new Error(data.error);
+				reject(err);
+				if (data.fatal) {
+					// The runtime can't run anything anymore.
+					this._fail(err);
+				}
 				return;
 			}
 
@@ -290,13 +302,32 @@ class XMLLint {
 
 		const onerror = (err) => {
 			// A worker that failed answers nothing further, so everything waiting on
-			// it has to be told. Loading the wasm file is the failure that reaches
-			// here in practice.
-			this._failAll(err);
+			// it has to be told.
+			this._fail(err);
 		};
 
 		this.listen('message', onmessage);
 		this.listen('error', onerror);
+		// #ifdef node
+		this.listen('exit', (exitCode) => {
+			this._fail(new Error(`XMLLint worker exited with code ${exitCode}`));
+		});
+		// #endif
+	}
+
+	/**
+	 * True when the instance can't be used anymore, either because terminate was
+	 * called, or because the worker or its runtime failed. Create a new instance
+	 * with XMLLint.init to continue.
+	 */
+	get terminated() {
+		return this._terminated;
+	}
+
+	_assertNotTerminated() {
+		if (this._terminated) {
+			throw new Error('XMLLint instance is terminated. Create a new one with XMLLint.init.');
+		}
 	}
 
 	_post(message) {
@@ -308,6 +339,7 @@ class XMLLint {
 	 * Mount initial files (clears previous VFS)
 	 */
 	mount(files) {
+		this._assertNotTerminated();
 		// TODO add types [{fileName, contents}]
 		this._post({
 			seq: ++this.messageId,
@@ -320,6 +352,7 @@ class XMLLint {
 	 * Add a single file to the VFS without clearing others
 	 */
 	addFile(fileName, contents) {
+		this._assertNotTerminated();
 		this._post({
 			seq: ++this.messageId,
 			type: 'ADDFILES',
@@ -332,6 +365,12 @@ class XMLLint {
 	 * Returns a Promise that resolves when the worker flushes stdout/stderr
 	 */
 	process(options) {
+		try {
+			this._assertNotTerminated();
+		} catch (err) {
+			return Promise.reject(err);
+		}
+
 		let args = options.args;
 		if (!Array.isArray(args) || args.length === 0) {
 			return Promise.reject(new Error('XMLLint process: args must be a non-empty array of xmllint arguments'));
@@ -364,14 +403,20 @@ class XMLLint {
 	}
 
 	terminate() {
-		if (this.worker) {
-			this.worker.terminate();
-			this.worker = null;
-		}
-
 		// Use the error from here rather than the call site: it points at the
 		// terminate, which is what a user debugging this needs to see.
-		this._failAll(new Error('Worker terminated'));
+		this._fail(new Error('Worker terminated'));
+	}
+
+	/** Ends the instance: stops the worker and rejects everything outstanding. */
+	_fail(err) {
+		this._terminated = true;
+		if (this.worker) {
+			const worker = this.worker;
+			this.worker = null;
+			worker.terminate();
+		}
+		this._failAll(err);
 	}
 
 	[Symbol.dispose]() {

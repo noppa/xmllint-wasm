@@ -47,7 +47,7 @@ async function keepAliveExample(schema: string, xml: string) {
 			args: ['--schema', 'schema.xsd', '--noout', 'doc.xml'],
 			modifyArguments: (args) => [...args, '--nonet'],
 		});
-		console.log(result.valid, result.errors);
+		console.log(result.valid, result.errors, linter.terminated);
 
 		linter.process({
 			// Error expected: process only accepts xmllint arguments, not validateXML's options

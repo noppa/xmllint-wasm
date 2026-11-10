@@ -40,8 +40,8 @@ literal [1] but exists in `XMLLintProcessOptions` [2]. [prop-missing]
         		^ [1]
 
 References:
-   ../index-node.js.flow:181:20
-   181|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
+   ../index-node.js.flow:191:20
+   191|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
                            ^^^^^^^^^^^^^^^^^^^^^ [2]
 
 
@@ -60,8 +60,8 @@ Cannot call `linter.process` with object literal bound to `options` because prop
         		^ [2]
 
 References:
-   ../index-node.js.flow:181:20
-   181|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
+   ../index-node.js.flow:191:20
+   191|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
                            ^^^^^^^^^^^^^^^^^^^^^ [1]
 
 
@@ -80,8 +80,8 @@ Cannot call `linter.process` with object literal bound to `options` because prop
         		^ [2]
 
 References:
-   ../index-node.js.flow:181:20
-   181|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
+   ../index-node.js.flow:191:20
+   191|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
                            ^^^^^^^^^^^^^^^^^^^^^ [1]
 
 

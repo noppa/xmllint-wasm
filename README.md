@@ -171,6 +171,19 @@ With TypeScript, this requires the `esnext.disposable` lib (or `esnext`) in your
 using linter = XMLLint.init();
 ```
 
+If xmllint can't run, like when a schema doesn't parse, that `process` call is
+rejected, but the instance stays usable. If `mount` or `addFile` fails, the calls
+waiting at that moment are rejected instead. Only when the worker or its Web Assembly
+runtime fails, or after `terminate`, is the instance terminated for good. You can check
+`linter.terminated` to know when to create a new instance:
+
+```javascript
+if (linter.terminated) {
+  linter = XMLLint.init();
+  linter.mount(schemaFiles);
+}
+```
+
 Calls to `process` on the same instance are run one at a time, in order.
 xmllint still parses the schema on each call, so the speedup depends on how
 much of the time goes to starting the runtime and copying the files, compared to

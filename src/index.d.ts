@@ -147,6 +147,16 @@ export class XMLLint {
   private constructor();
 
   /**
+   * True when the instance can't be used anymore, either because terminate was
+   * called, or because the worker or its Web Assembly runtime failed. Calls on a
+   * terminated instance fail. Create a new instance with XMLLint.init to continue.
+   *
+   * Errors like an invalid document or a schema that doesn't parse don't
+   * terminate the instance.
+   */
+  readonly terminated: boolean;
+
+  /**
    * Starts a new worker and the Web Assembly runtime in it.
    */
   static init(options?: XMLLintInitOptions): XMLLint;
@@ -169,7 +179,8 @@ export class XMLLint {
   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
 
   /**
-   * Stops the worker. Calls that are still pending are rejected.
+   * Stops the worker. Calls that are still pending are rejected,
+   * and the instance is marked as terminated.
    */
   terminate(): void;
 
