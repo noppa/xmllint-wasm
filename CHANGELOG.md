@@ -2,6 +2,9 @@
 
 ## 6.0.0 (unreleased)
 
+Officially supported Node.js version is raised from 16 to 22, the oldest
+Node.js version that is still maintained. This is a **breaking change**.
+
 ### Keep an xmllint instance alive between calls
 
 New `XMLLint` API that keeps the worker, the Web Assembly runtime and its
