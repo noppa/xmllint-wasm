@@ -462,6 +462,35 @@ async function testKeepAliveFileSystemErrorMessage() {
 	}
 }
 
+// The same as terminate, used by using declarations.
+async function testKeepAliveDispose() {
+	const linter = xmllint.XMLLint.init();
+	linter.mount(schemaOptions.preload);
+	linter.addFile('test.xsd', schemaOptions.schema);
+	linter.addFile('doc.xml', xmlValid);
+	const pending = linter.process({args: ['--schema', 'test.xsd', '--noout', 'doc.xml']});
+	linter[Symbol.dispose]();
+	await assert.rejects(pending, /Worker terminated/);
+}
+
+function supportsUsingDeclarations() {
+	try {
+		new Function('{ using x = null; }');
+		return true;
+	} catch (err) {
+		if (err instanceof SyntaxError) return false;
+		throw err;
+	}
+}
+
+async function testKeepAliveWithUsing() {
+	if (!supportsUsingDeclarations()) {
+		console.log(`Skipping testKeepAliveWithUsing: Node.js ${process.version} does not support using declarations.`);
+		return;
+	}
+	await require('./test-using.js')(xmllint, {xmlValid, schemaOptions});
+}
+
 runTests(
 	testWithValidFile,
 	testWithValidFileForFormat,
@@ -482,4 +511,6 @@ runTests(
 	testKeepAliveProcessRequiresArgs,
 	testKeepAliveRemountAfterReplacingFiles,
 	testKeepAliveFileSystemErrorMessage,
+	testKeepAliveDispose,
+	testKeepAliveWithUsing,
 );
