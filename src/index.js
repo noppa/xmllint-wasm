@@ -174,11 +174,11 @@ async function validateXML(options) {
 	validateOptions(preprocessed);
 
 	try {
-		linter = XMLLint.init({
+		linter = await XMLLint.init({
 			initialMemoryPages: options.initialMemoryPages,
 			maxMemoryPages: options.maxMemoryPages,
 		});
-		linter.mount([...preprocessed.files.xmls, ...preprocessed.files.schemas, ...preprocessed.files.preloads]);
+		await linter.mount([...preprocessed.files.xmls, ...preprocessed.files.schemas, ...preprocessed.files.preloads]);
 		ret = await linter.process({args: preprocessed.args, modifyArguments: options.modifyArguments});
 	} finally {
 		if (linter) {
@@ -191,10 +191,9 @@ async function validateXML(options) {
 
 class XMLLint {
 	/**
-	 * Use XMLLint.init instead.
-	 * @param {{initialMemory: number, maxMemory: number}} memory
+	 * Use XMLLint.init instead, which also waits for the runtime to be ready.
 	 */
-	constructor(memory) {
+	constructor() {
 		this.worker = null;
 		this.messageId = 0;
 		this.pending = new Map();
@@ -211,29 +210,33 @@ class XMLLint {
 		this.listen = this.worker.on.bind(this.worker);
 		// #endif
 
-
 		this._bindListeners();
-
-		this._post({
-			seq: ++this.messageId,
-			type: 'INIT',
-			initialMemory: memory.initialMemory,
-			maxMemory: memory.maxMemory
-		});
 	}
 
 	/** @type {typeof import("./index").XMLLint.init} */
-	static init(options) {
+	static async init(options) {
 		const memory = resolveMemoryOptions(options || {});
 		validateMemoryLimitOptions(memory);
-		return new XMLLint(memory);
+
+		const linter = new XMLLint();
+		try {
+			await linter._request({
+				type: 'INIT',
+				initialMemory: memory.initialMemory,
+				maxMemory: memory.maxMemory
+			});
+		} catch (err) {
+			linter.terminate();
+			throw err;
+		}
+		return linter;
 	}
 
 	/**
 	 * Internal setup for worker communication
 	 */
 	_bindListeners() {
-		const onmessage = async (event) => {
+		const onmessage = (event) => {
 			// #ifdef browser
 			var data = event.data;
 			// #endif
@@ -246,49 +249,36 @@ class XMLLint {
 				return;
 			}
 
-			if (!data.seq) {
-				throw new Error('Message without sequence id');
-			}
-
 			if (data.type === 'EXIT') {
 				// xmllint called exit(), which ends the runtime.
 				this._fail(new Error(`XMLLint worker: xmllint exited with code ${data.exitCode}`));
 				return;
 			}
 
-			let resolve, reject;
-			if (this.pending.has(data.seq)) {
-				const prom = this.pending.get(data.seq);
-				resolve = prom.resolve;
-				reject = prom.reject;
-			} else {
-				resolve = () => {};
-				// INIT, MOUNT and ADDFILES are posted without a promise of their own,
-				// so a failure in one has no single caller to report to. Reject
-				// everything waiting, as those calls may depend on the failed one.
-				reject = (err) => this._failAll(err);
+			const prom = this.pending.get(data.seq);
+			if (!prom) {
+				// The call was already rejected, e.g. by terminate.
+				return;
 			}
-
 			this.pending.delete(data.seq);
 
 			if (data.error) {
 				const err = new Error(data.error);
-				reject(err);
+				prom.reject(err);
 				if (data.fatal) {
 					// The runtime can't run anything anymore.
 					this._fail(err);
 				}
-				return;
-			}
-
-			if (data.type === 'RESULT') {
+			} else if (data.type === 'DONE') {
+				prom.resolve();
+			} else if (data.type === 'RESULT') {
 				const valid = validationSucceeded(data.exitCode);
 				if (valid === null) {
 					const err = new Error(data.stderr);
 					err.code = data.exitCode;
-					reject(err);
+					prom.reject(err);
 				} else {
-					resolve({
+					prom.resolve({
 						valid: valid,
 						normalized: data.stdout,
 						errors: valid ? [] : parseErrors(data.stderr),
@@ -296,7 +286,7 @@ class XMLLint {
 					});
 				}
 			} else {
-				reject(new Error('Could not process message'));
+				prom.reject(new Error(`XMLLint: unexpected message type ${data.type} from the worker`));
 			}
 		};
 
@@ -324,53 +314,44 @@ class XMLLint {
 		return this._terminated;
 	}
 
-	_assertNotTerminated() {
-		if (this._terminated) {
-			throw new Error('XMLLint instance is terminated. Create a new one with XMLLint.init.');
-		}
-	}
-
 	_post(message) {
 		message[messageKey] = true;
 		this.worker.postMessage(message);
 	}
 
 	/**
-	 * Mount initial files (clears previous VFS)
+	 * Sends a message to the worker. Resolves with the worker's answer to it.
 	 */
-	mount(files) {
-		this._assertNotTerminated();
-		// TODO add types [{fileName, contents}]
-		this._post({
-			seq: ++this.messageId,
-			type: 'MOUNT',
-			files: files
-		});
-	}
-
-	/**
-	 * Add a single file to the VFS without clearing others
-	 */
-	addFile(fileName, contents) {
-		this._assertNotTerminated();
-		this._post({
-			seq: ++this.messageId,
-			type: 'ADDFILES',
-			files: [{fileName, contents}]
-		});
-	}
-
-	/**
-	 * Run the validation (PROCESS)
-	 * Returns a Promise that resolves when the worker flushes stdout/stderr
-	 */
-	process(options) {
-		try {
-			this._assertNotTerminated();
-		} catch (err) {
-			return Promise.reject(err);
+	_request(message) {
+		if (this._terminated) {
+			return Promise.reject(new Error('XMLLint instance is terminated. Create a new one with XMLLint.init.'));
 		}
 
+		const seq = ++this.messageId;
+		return new Promise((resolve, reject) => {
+			this.pending.set(seq, { resolve, reject });
+			this._post({...message, seq});
+		});
+	}
+
+	/**
+	 * Replaces all files previously added with mount or addFile.
+	 */
+	mount(files) {
+		return this._request({type: 'MOUNT', files});
+	}
+
+	/**
+	 * Adds a file, keeping the others.
+	 */
+	addFile(fileName, contents) {
+		return this._request({type: 'ADDFILES', files: [{fileName, contents}]});
+	}
+
+	/**
+	 * Runs xmllint with the given arguments.
+	 */
+	process(options) {
 		let args = options.args;
 		if (!Array.isArray(args) || args.length === 0) {
 			return Promise.reject(new Error('XMLLint process: args must be a non-empty array of xmllint arguments'));
@@ -383,19 +364,10 @@ class XMLLint {
 			}
 		}
 
-		const seq = ++this.messageId;
-		return new Promise((resolve, reject) => {
-			this.pending.set(seq, { resolve, reject });
-
-			this._post({
-				seq,
-				type: 'PROCESS',
-				args: args
-			});
-		});
+		return this._request({type: 'PROCESS', args});
 	}
 
-	/** Rejects everything outstanding. Nothing survives the instance failing. */
+	/** Rejects everything outstanding. */
 	_failAll(err) {
 		const pending = [...this.pending.values()];
 		this.pending.clear();

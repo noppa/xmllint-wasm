@@ -158,20 +158,23 @@ export class XMLLint {
 
   /**
    * Starts a new worker and the Web Assembly runtime in it.
+   * Resolves once the runtime is ready, and rejects if it fails to start.
    */
-  static init(options?: XMLLintInitOptions): XMLLint;
+  static init(options?: XMLLintInitOptions): Promise<XMLLint>;
 
   /**
    * Adds files to the in-memory file system, removing all files
    * previously added with mount or addFile.
+   * Resolves once the files are written.
    */
-  mount(files: ReadonlyArray<XMLFileInfo>): void;
+  mount(files: ReadonlyArray<XMLFileInfo>): Promise<void>;
 
   /**
    * Adds a file to the in-memory file system, keeping the other files.
    * Replaces a previously added file with the same name.
+   * Resolves once the file is written.
    */
-  addFile(fileName: string, contents: XMLString | Uint8Array): void;
+  addFile(fileName: string, contents: XMLString | Uint8Array): Promise<void>;
 
   /**
    * Runs xmllint once. Calls on the same instance are run one at a time, in order.
@@ -185,7 +188,7 @@ export class XMLLint {
   terminate(): void;
 
   /**
-   * Same as terminate. Allows `using linter = XMLLint.init()`.
+   * Same as terminate. Allows `using linter = await XMLLint.init()`.
    */
   [Symbol.dispose](): void;
 }

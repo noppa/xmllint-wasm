@@ -13,10 +13,10 @@ need to be sent to the worker only once.
 See "Keeping an instance alive" in the README.
 
 ```typescript
-const linter = XMLLint.init();
+const linter = await XMLLint.init();
 try {
-  linter.mount(schemaFiles);
-  linter.addFile('doc.xml', xml);
+  await linter.mount(schemaFiles);
+  await linter.addFile('doc.xml', xml);
   const result = await linter.process({args: ['--schema', 'main.xsd', '--noout', 'doc.xml']});
 } finally {
   linter.terminate();

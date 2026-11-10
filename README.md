@@ -132,18 +132,19 @@ const {XMLLint, memoryPages} = require('xmllint-wasm');
 
 async function example(documents, schemaFiles) {
   // Optional, same as the memory options of validateXML.
-  const linter = XMLLint.init({
+  // Resolves once the worker and its Web Assembly runtime are ready.
+  const linter = await XMLLint.init({
     maxMemoryPages: 2 * memoryPages.GiB,
   });
   try {
     // Add the schema files to the instance's in-memory file system once.
     // Calling mount again replaces all previously added files.
     // schemaFiles: [{fileName: 'main.xsd', contents: '...'}, ...]
-    linter.mount(schemaFiles);
+    await linter.mount(schemaFiles);
 
     for (const doc of documents) {
       // addFile keeps the other files, and replaces a file with the same name.
-      linter.addFile('doc.xml', doc);
+      await linter.addFile('doc.xml', doc);
       // Pass the xmllint command line arguments directly.
       // The result has the same format as validateXML's.
       const result = await linter.process({
@@ -168,19 +169,22 @@ you can declare the instance with `using` instead of calling `terminate` yoursel
 With TypeScript, this requires the `esnext.disposable` lib (or `esnext`) in your `tsconfig.json`.
 
 ```javascript
-using linter = XMLLint.init();
+using linter = await XMLLint.init();
 ```
 
+`mount` and `addFile` return promises too, which reject if a file can't be written.
+Await them, or at least handle their errors: in Node.js, a rejected promise that is
+not handled ends the process by default.
+
 If xmllint can't run, like when a schema doesn't parse, that `process` call is
-rejected, but the instance stays usable. If `mount` or `addFile` fails, the calls
-waiting at that moment are rejected instead. Only when the worker or its Web Assembly
+rejected, but the instance stays usable. Only when the worker or its Web Assembly
 runtime fails, or after `terminate`, is the instance terminated for good. You can check
 `linter.terminated` to know when to create a new instance:
 
 ```javascript
 if (linter.terminated) {
-  linter = XMLLint.init();
-  linter.mount(schemaFiles);
+  linter = await XMLLint.init();
+  await linter.mount(schemaFiles);
 }
 ```
 

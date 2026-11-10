@@ -119,6 +119,9 @@
 
 			Promise.resolve(m).catch(abort);
 		});
+
+		// INIT is answered once the runtime is ready, or failed to start.
+		await module;
 	}
 	async function ensureModule() {
 		if (module === undefined) {
@@ -216,10 +219,15 @@
 			throw new Error(`XMLLint worker: Unknown message type ${data.type}`);
 		}
 
-		// A handler that throws has to answer the message that caused it. Left to
-		// reject on its own it would surface as an unhandled rejection here and as
-		// a call that never settles on the other side.
-		enqueue(() => handler(data).catch((err) => post({
+		// Every message is answered: PROCESS with its RESULT, the others with DONE,
+		// and a handler that throws with the error. Left to reject on its own, an
+		// error would surface as an unhandled rejection here and as a call that
+		// never settles on the other side.
+		enqueue(() => handler(data).then(() => {
+			if (data.type !== 'PROCESS') {
+				post({seq: data.seq, type: 'DONE'});
+			}
+		}, (err) => post({
 			seq: data.seq,
 			error: (err && err.message) || String(err),
 			fatal: fatalError !== null,

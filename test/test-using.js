@@ -8,10 +8,10 @@ module.exports = async function testKeepAliveWithUsing(xmllint, {xmlValid, schem
 	const args = ['--schema', 'test.xsd', '--noout', 'doc.xml'];
 	let pending;
 	{
-		using linter = xmllint.XMLLint.init();
-		linter.mount(schemaOptions.preload);
-		linter.addFile('test.xsd', schemaOptions.schema);
-		linter.addFile('doc.xml', xmlValid);
+		using linter = await xmllint.XMLLint.init();
+		await linter.mount(schemaOptions.preload);
+		await linter.addFile('test.xsd', schemaOptions.schema);
+		await linter.addFile('doc.xml', xmlValid);
 
 		const result = await linter.process({args});
 		assert.equal(result.valid, true);

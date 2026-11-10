@@ -37,13 +37,13 @@ async function example() {
 }
 
 async function keepAliveExample(schema: string, xml: Buffer) {
-	const linter = xmllint.XMLLint.init({
+	const linter = await xmllint.XMLLint.init({
 		initialMemoryPages: xmllint.memoryPages.defaultInitialMemoryPages,
 		maxMemoryPages: 2 * xmllint.memoryPages.GiB,
 	});
 	try {
-		linter.mount([{fileName: 'schema.xsd', contents: schema}]);
-		linter.addFile('doc.xml', xml);
+		await linter.mount([{fileName: 'schema.xsd', contents: schema}]);
+		await linter.addFile('doc.xml', xml);
 		const result = await linter.process({
 			args: ['--schema', 'schema.xsd', '--noout', 'doc.xml'],
 			modifyArguments: (args) => [...args, '--nonet'],
@@ -63,8 +63,8 @@ async function keepAliveExample(schema: string, xml: Buffer) {
 }
 
 async function keepAliveWithUsing(xml: string) {
-	using linter = xmllint.XMLLint.init();
-	linter.addFile('doc.xml', xml);
+	using linter = await xmllint.XMLLint.init();
+	await linter.addFile('doc.xml', xml);
 	await linter.process({args: ['--noout', 'doc.xml']});
 }
 
