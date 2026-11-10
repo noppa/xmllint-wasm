@@ -3,6 +3,13 @@
 	const {parentPort} = require('worker_threads');
 	// #endif
 
+	// Our own messages are tagged with this key so that both sides of the
+	// worker channel can tell them apart from unrelated messages that the
+	// runtime might send over the same channel, like the "watch:require"
+	// messages Node.js sends when running in watch mode.
+	// https://github.com/noppa/xmllint-wasm/issues/37
+	const messageKey = 'xmllint-wasm';
+
 	let queue = Promise.resolve();
 	let stdout = '';
 	let stderr = '';
@@ -11,6 +18,7 @@
 	let files = [];
 
 	function post(message) {
+		message[messageKey] = true;
 		// #ifdef node
 		parentPort.postMessage(message);
 		// #ifdef browser
@@ -114,8 +122,16 @@
 	}
 
 	function writeToVFS(mod, file) {
+		const path = '/' + file['fileName'];
+		// FS.writeFile does not create missing parent directories, so a fileName
+		// containing a slash fails with ENOENT. Schema sets that import each
+		// other by relative path need those directories to exist.
+		const dir = path.substring(0, path.lastIndexOf('/'));
+		if (dir.length > 1) {
+			mod.__fs_createPath('/', dir.substring(1), true, true);
+		}
 		files.push(file['fileName']);
-		mod.__fs_write('/' + file['fileName'], file['contents']);
+		mod.__fs_write(path, file['contents']);
 	}
 
 	async function mount(data) {
@@ -154,13 +170,16 @@
 		});
 	}
 
-	// #endif
 	async function onWorkerMessage(event) {
 		// #ifdef browser
 		var data = event.data;
 		// #ifdef node
 		var data = event;
 		// #endif
+		if (!data || data[messageKey] !== true) {
+			// Not a message from us, ignore it.
+			return;
+		}
 
 		if (!data.type) throw new Error('XMLLint worker: Expecting message type in worker message');
 		if (!data.seq) throw new Error('XMLLint worker: Expecting sequence number in worker message');

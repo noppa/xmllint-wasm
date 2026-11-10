@@ -155,6 +155,13 @@ function parseErrors(/** @type {string} */ output) {
 	});
 }
 
+// Our own messages are tagged with this key so that both sides of the
+// worker channel can tell them apart from unrelated messages that the
+// runtime might send over the same channel, like the "watch:require"
+// messages Node.js sends when running in watch mode.
+// https://github.com/noppa/xmllint-wasm/issues/37
+const messageKey = 'xmllint-wasm';
+
 /** @type {import("./index").validateXML} */
 async function validateXML(options) {
 	let linter, ret;
@@ -196,14 +203,14 @@ class XMLLint {
 		this._bindListeners();
 
 		if (memoryCfg) {
-			this.worker.postMessage({
+			this._post({
 				seq: ++this.messageId,
 				type: 'INIT',
 				initialMemory: memoryCfg.initialMemory,
 				maxMemory: memoryCfg.maxMemory
 			});
 		} else {
-			this.worker.postMessage({
+			this._post({
 				seq: ++this.messageId,
 				type: 'INIT',
 				initialMemory: memoryPages.defaultInitialMemoryPages,
@@ -228,6 +235,11 @@ class XMLLint {
 			// #ifdef node
 			var data = event;
 			// #endif
+
+			if (!data || data[messageKey] !== true) {
+				// Not a message from our worker, ignore it.
+				return;
+			}
 
 			if (!data.seq) {
 				throw new Error('Message without sequence id');
@@ -283,12 +295,17 @@ class XMLLint {
 		this.listen('error', onerror);
 	}
 
+	_post(message) {
+		message[messageKey] = true;
+		this.worker.postMessage(message);
+	}
+
 	/**
 	 * Mount initial files (clears previous VFS)
 	 */
 	mount(files) {
 		// TODO add types [{fileName, contents}]
-		this.worker.postMessage({
+		this._post({
 			seq: ++this.messageId,
 			type: 'MOUNT',
 			files: files
@@ -299,7 +316,7 @@ class XMLLint {
 	 * Add a single file to the VFS without clearing others
 	 */
 	addFile(fileName, contents) {
-		this.worker.postMessage({
+		this._post({
 			seq: ++this.messageId,
 			type: 'ADDFILES',
 			files: [{fileName, contents}]
@@ -323,7 +340,7 @@ class XMLLint {
 			const toAdd = files.xmls.concat(files.schemas);
 
 			if (toAdd.length > 0) {
-				this.worker.postMessage({
+				this._post({
 					seq: ++this.messageId,
 					type: 'ADDFILES',
 					files: toAdd
@@ -341,7 +358,7 @@ class XMLLint {
 		return new Promise((resolve, reject) => {
 			this.pending.set(seq, { resolve, reject });
 
-			this.worker.postMessage({
+			this._post({
 				seq,
 				type: 'PROCESS',
 				args: args
