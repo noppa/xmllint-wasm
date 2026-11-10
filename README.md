@@ -120,6 +120,65 @@ The Promise resolved with a object like the following
 }
 ```
 
+### Keeping an instance alive
+
+Each `validateXML` call starts a new worker and Web Assembly runtime, and
+copies all the given files to it. When validating many documents against the same
+schema set, especially a large one, you can instead keep one `XMLLint` instance
+alive and send the schema files to it only once.
+
+```javascript
+const {XMLLint, memoryPages} = require('xmllint-wasm');
+
+async function example(documents, schemaFiles) {
+  // The memory config is optional, and given in Web Assembly pages.
+  const linter = XMLLint.init({
+    initialMemory: memoryPages.defaultInitialMemoryPages,
+    maxMemory: 2 * memoryPages.GiB,
+  });
+  try {
+    // Add the schema files to the instance's in-memory file system once.
+    // Calling mount again replaces all previously added files.
+    // schemaFiles: [{fileName: 'main.xsd', contents: '...'}, ...]
+    linter.mount(schemaFiles);
+
+    for (const doc of documents) {
+      // addFile keeps the other files, and replaces a file with the same name.
+      linter.addFile('doc.xml', doc);
+      // Pass the xmllint command line arguments directly.
+      // The result has the same format as validateXML's.
+      const result = await linter.process({
+        args: ['--schema', 'main.xsd', '--noout', 'doc.xml'],
+      });
+      console.log(result.valid, result.errors);
+    }
+  } finally {
+    // Stops the worker. Pending calls are rejected.
+    linter.terminate();
+  }
+}
+```
+
+`process` also accepts the same options as `validateXML`, except for `preload`
+and the memory options. The `xml` and `schema` files are then added to the
+instance's file system before running xmllint, replacing earlier files with
+the same name:
+
+```javascript
+const result = await linter.process({
+  xml: {fileName: 'doc.xml', contents: doc},
+  schema: {fileName: 'main.xsd', contents: mainSchema},
+});
+```
+
+This sends the schema to the worker on every call, though, so for large schema
+sets prefer `mount` and `args` like in the first example.
+
+Calls to `process` on the same instance are run one at a time, in order.
+xmllint still parses the schema on each call, so the speedup depends on how
+much of the time goes to starting the runtime and copying the files, compared to
+the validation itself.
+
 ### Usage in browsers
 
 Check [./browser-demo/html-data](./browser-demo/html-data) index.html and

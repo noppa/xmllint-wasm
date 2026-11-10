@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### Keep an xmllint instance alive between calls
+
+New `XMLLint` API that keeps the worker, the Web Assembly runtime and its
+in-memory file system alive between calls, so that large schema sets
+need to be sent to the worker only once.
+See "Keeping an instance alive" in the README.
+
+```typescript
+const linter = XMLLint.init();
+try {
+  linter.mount(schemaFiles);
+  linter.addFile('doc.xml', xml);
+  const result = await linter.process({args: ['--schema', 'main.xsd', '--noout', 'doc.xml']});
+} finally {
+  linter.terminate();
+}
+```
+
+`validateXML` keeps working as before, and is now implemented on top of `XMLLint`.
+
+To make xmllint safe to run several times in the same runtime, the build now
+patches libxml2's xmllint to reset its global state between runs.
+
+Closes [#30](https://github.com/noppa/xmllint-wasm/issues/30).
+PR [#31](https://github.com/noppa/xmllint-wasm/pull/31), thanks [@JohannesBe](https://github.com/JohannesBe)
+and [@dtretyakov](https://github.com/dtretyakov)!
+
 ## 5.3.0
 
 ### Create parent directories for input files
