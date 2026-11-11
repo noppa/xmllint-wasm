@@ -8,9 +8,12 @@ function use_emcc() {
 		-s IMPORTED_MEMORY \
 		-s ALLOW_MEMORY_GROWTH \
 		-s MAXIMUM_MEMORY=4GB \
-		-s NO_EXIT_RUNTIME=0 \
+		-s EXIT_RUNTIME=0 \
 		-s FORCE_FILESYSTEM=1 \
+		-s INVOKE_RUN=0 \
 		-s EXPORT_NAME=Module \
+    -s EXPORTED_RUNTIME_METHODS='["callMain", "FS"]' \
+    -s EXPORTED_FUNCTIONS='["_main", "_fflush", "_putchar"]' \
 		--closure 1 \
 		./build/xmllint-xmllint.o ./build/.libs/libxml2.a ./libz.a \
 		-o xmllint.js \

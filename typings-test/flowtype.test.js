@@ -34,3 +34,26 @@ async function example() {
 		console.warn(validationResult.errors);
 	}
 }
+
+async function keepAliveExample(schema: string, xml: string) {
+	const linter = await xmllint.XMLLint.init({
+		initialMemoryPages: xmllint.memoryPages.defaultInitialMemoryPages,
+		maxMemoryPages: 2 * xmllint.memoryPages.GiB,
+	});
+	try {
+		await linter.mount([{fileName: 'schema.xsd', contents: schema}]);
+		await linter.addFile('doc.xml', xml);
+		const result = await linter.process({
+			args: ['--schema', 'schema.xsd', '--noout', 'doc.xml'],
+		});
+		console.log(result.valid, result.errors, linter.terminated);
+
+		linter.process({
+			// Error expected: process only accepts xmllint arguments, not validateXML's options
+			xml,
+			schema,
+		});
+	} finally {
+		linter.terminate();
+	}
+}

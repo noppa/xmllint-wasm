@@ -35,3 +35,37 @@ async function example() {
 		console.warn(validationResult.errors);
 	}
 }
+
+async function keepAliveExample(schema: string, xml: Buffer) {
+	const linter = await xmllint.XMLLint.init({
+		initialMemoryPages: xmllint.memoryPages.defaultInitialMemoryPages,
+		maxMemoryPages: 2 * xmllint.memoryPages.GiB,
+	});
+	try {
+		await linter.mount([{fileName: 'schema.xsd', contents: schema}]);
+		await linter.addFile('doc.xml', xml);
+		const result = await linter.process({
+			args: ['--schema', 'schema.xsd', '--noout', 'doc.xml'],
+		});
+		console.log(result.valid, result.errors, linter.terminated);
+		// Error expected: terminated is read-only
+		linter.terminated = true;
+
+		linter.process({
+			// Error expected: process only accepts xmllint arguments, not validateXML's options
+			xml,
+			schema,
+		});
+	} finally {
+		linter.terminate();
+	}
+}
+
+async function keepAliveWithUsing(xml: string) {
+	using linter = await xmllint.XMLLint.init();
+	await linter.addFile('doc.xml', xml);
+	await linter.process({args: ['--noout', 'doc.xml']});
+}
+
+// Error expected: use XMLLint.init instead
+new xmllint.XMLLint();

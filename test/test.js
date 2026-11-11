@@ -316,6 +316,224 @@ async function testWithFilesInSubdirectories() {
 	assert.deepEqual({valid, errors}, {valid: true, errors: []});
 }
 
+// The point of keeping an instance alive is that documents share it. Nothing
+// one document does may reach the next: xmllint holds its options and its exit
+// status in statics, so a run that fails leaves them set unless the build
+// resets them, and every later document is then reported as failing while the
+// output still says it validates.
+async function testKeepAliveDoesNotCarryVerdicts() {
+	const linter = await xmllint.XMLLint.init();
+	try {
+		await linter.mount(schemaOptions.preload);
+
+		const verdicts = [];
+		for (const xml of [xmlValid, xmlValid, xmlInvalid, xmlValid, xmlInvalid]) {
+			await linter.addFile('doc.xml', xml);
+			await linter.addFile('test.xsd', schemaOptions.schema);
+			const result = await linter.process({
+				args: ['--schema', 'test.xsd', '--noout', 'doc.xml'],
+			});
+			verdicts.push(result.valid);
+		}
+
+		assert.deepEqual(verdicts, [true, true, false, true, false]);
+	} finally {
+		linter.terminate();
+	}
+}
+
+// The same documents through the same instance must reach the same verdicts as
+// the one-shot API, which gets a fresh runtime every time.
+async function testKeepAliveAgreesWithValidateXML() {
+	const linter = await xmllint.XMLLint.init();
+	try {
+		await linter.mount(schemaOptions.preload);
+
+		for (const [name, xml] of [['valid', xmlValid], ['invalid', xmlInvalid]]) {
+			const oneShot = await xmllint.validateXML({
+				xml: {fileName: 'doc.xml', contents: xml},
+				...schemaOptions,
+			});
+
+			await linter.addFile('doc.xml', xml);
+			await linter.addFile('test.xsd', schemaOptions.schema);
+			const kept = await linter.process({
+				args: ['--schema', 'test.xsd', '--noout', 'doc.xml'],
+			});
+
+			assert.equal(kept.valid, oneShot.valid, `${name}: verdicts differ`);
+			assert.equal(kept.errors.length, oneShot.errors.length, `${name}: error counts differ`);
+		}
+	} finally {
+		linter.terminate();
+	}
+}
+
+// A call that cannot be answered has to reject rather than hang.
+async function testKeepAliveRejectsOnTerminate() {
+	const linter = await xmllint.XMLLint.init();
+	await linter.mount(schemaOptions.preload);
+	await linter.addFile('doc.xml', xmlValid);
+	await linter.addFile('test.xsd', schemaOptions.schema);
+
+	const pending = linter.process({
+		args: ['--schema', 'test.xsd', '--noout', 'doc.xml'],
+	});
+	linter.terminate();
+
+	let error;
+	try {
+		await pending;
+	} catch (err) {
+		error = err;
+	}
+	assert(error, 'Expected the outstanding call to reject when the worker is terminated');
+}
+
+async function testKeepAliveMemoryOptions() {
+	await assert.rejects(
+		xmllint.XMLLint.init({maxMemoryPages: xmllint.memoryPages.max + 1}),
+		/Invalid memory options/
+	);
+
+	const linter = await xmllint.XMLLint.init({
+		initialMemoryPages: xmllint.memoryPages.MiB * 30,
+		maxMemoryPages: xmllint.memoryPages.GiB,
+	});
+	try {
+		await linter.mount(schemaOptions.preload);
+		await linter.addFile('doc.xml', xmlValid);
+		await linter.addFile('test.xsd', schemaOptions.schema);
+		const result = await linter.process({
+			args: ['--schema', 'test.xsd', '--noout', 'doc.xml'],
+		});
+		assert.equal(result.valid, true);
+	} finally {
+		linter.terminate();
+	}
+}
+
+// process only takes xmllint arguments. validateXML's options would have to
+// send the schema files on every call, which defeats keeping the instance alive.
+async function testKeepAliveProcessRequiresArgs() {
+	const linter = await xmllint.XMLLint.init();
+	try {
+		await assert.rejects(
+			linter.process({xml: xmlValid, schema: schemaOptions.schema}),
+			/args must be a non-empty array/
+		);
+	} finally {
+		linter.terminate();
+	}
+}
+
+// Adding a file with the same name again replaces it, and a later mount has
+// to remove it only once.
+async function testKeepAliveRemountAfterReplacingFiles() {
+	const linter = await xmllint.XMLLint.init();
+	const args = ['--schema', 'test.xsd', '--noout', 'doc.xml'];
+	try {
+		for (let i = 0; i < 2; i++) {
+			await linter.mount(schemaOptions.preload);
+			await linter.addFile('test.xsd', schemaOptions.schema);
+			await linter.addFile('doc.xml', xmlValid);
+			await linter.addFile('doc.xml', xmlInvalid);
+			const result = await linter.process({args});
+			assert.equal(result.valid, false, `round ${i}`);
+		}
+	} finally {
+		linter.terminate();
+	}
+}
+
+// File system errors reject the call that caused them, with a message that
+// says what failed. They used to reach the caller as "[object Object]".
+async function testKeepAliveFileSystemErrorMessage() {
+	const linter = await xmllint.XMLLint.init();
+	try {
+		await linter.addFile('a', xmlValid);
+		// "a" is a file, so it cannot be a directory too.
+		await assert.rejects(
+			linter.addFile('a/b.xml', xmlValid),
+			/could not write file "a\/b.xml"/
+		);
+		// The instance survives it.
+		const result = await linter.process({args: ['--noout', 'a']});
+		assert.equal(result.valid, true);
+		assert.equal(linter.terminated, false);
+	} finally {
+		linter.terminate();
+	}
+}
+
+// The same as terminate, used by using declarations.
+async function testKeepAliveDispose() {
+	const linter = await xmllint.XMLLint.init();
+	await linter.mount(schemaOptions.preload);
+	await linter.addFile('test.xsd', schemaOptions.schema);
+	await linter.addFile('doc.xml', xmlValid);
+	const pending = linter.process({args: ['--schema', 'test.xsd', '--noout', 'doc.xml']});
+	linter[Symbol.dispose]();
+	await assert.rejects(pending, /Worker terminated/);
+}
+
+function supportsUsingDeclarations() {
+	try {
+		new Function('{ using x = null; }');
+		return true;
+	} catch (err) {
+		if (err instanceof SyntaxError) return false;
+		throw err;
+	}
+}
+
+async function testKeepAliveWithUsing() {
+	if (!supportsUsingDeclarations()) {
+		console.log(`Skipping testKeepAliveWithUsing: Node.js ${process.version} does not support using declarations.`);
+		return;
+	}
+	await require('./test-using.js')(xmllint, {xmlValid, schemaOptions});
+}
+
+async function testKeepAliveTerminatedFlag() {
+	const args = ['--schema', 'test.xsd', '--noout', 'doc.xml'];
+	const linter = await xmllint.XMLLint.init();
+	try {
+		assert.equal(linter.terminated, false);
+		await linter.mount(schemaOptions.preload);
+
+		// Errors that the instance survives don't terminate it.
+		await linter.addFile('test.xsd', '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><broken');
+		await linter.addFile('doc.xml', xmlValid);
+		await assert.rejects(linter.process({args}), /parser error/);
+		assert.equal(linter.terminated, false);
+	} finally {
+		linter.terminate();
+	}
+
+	assert.equal(linter.terminated, true);
+	await assert.rejects(linter.process({args}), /instance is terminated/);
+	await assert.rejects(linter.addFile('doc.xml', xmlValid), /instance is terminated/);
+	await assert.rejects(linter.mount([]), /instance is terminated/);
+}
+
+// init only resolves once the runtime is ready, so a runtime that fails to
+// start is reported by init.
+async function testKeepAliveInitRejectsWhenRuntimeFails() {
+	const path = require('path');
+	let wasmPath = path.resolve(__dirname, '../xmllint.wasm');
+	if (!fs.existsSync(wasmPath)) {
+		wasmPath = path.join(path.dirname(require.resolve('xmllint-wasm')), 'xmllint.wasm');
+	}
+	const tmpPath = wasmPath + '.bak';
+	fs.renameSync(wasmPath, tmpPath);
+	try {
+		await assert.rejects(xmllint.XMLLint.init(), /WASM Abort/);
+	} finally {
+		fs.renameSync(tmpPath, wasmPath);
+	}
+}
+
 runTests(
 	testWithValidFile,
 	testWithValidFileForFormat,
@@ -329,4 +547,15 @@ runTests(
 	testWithUnexpectedWorkerMessages,
 	testWithLargeFile,
 	testWithMissingWasmFile,
+	testKeepAliveDoesNotCarryVerdicts,
+	testKeepAliveAgreesWithValidateXML,
+	testKeepAliveRejectsOnTerminate,
+	testKeepAliveMemoryOptions,
+	testKeepAliveProcessRequiresArgs,
+	testKeepAliveRemountAfterReplacingFiles,
+	testKeepAliveFileSystemErrorMessage,
+	testKeepAliveDispose,
+	testKeepAliveWithUsing,
+	testKeepAliveTerminatedFlag,
+	testKeepAliveInitRejectsWhenRuntimeFails,
 );

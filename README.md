@@ -17,7 +17,7 @@ Works in Node.js and modern browsers.
 
 * libxml2 version is upgraded to v2.13.8
 * The output is wasm instead of asm.js
-* In addition to modern browsers with wasm support, works in Node.js 12 or later
+* In addition to modern browsers with wasm support, works in Node.js 22 or later
 * Library size is quite a bit smaller, the wasm file and wrapper js files
   weigh about 860K combined
 * Allows normalization / formatting of the input XML in addition to validation
@@ -32,7 +32,7 @@ npm i xmllint-wasm
 The library uses Node.js [Worker threads](https://nodejs.org/api/worker_threads.html)
 to isolate the Emscripten wrapper from your main process (so that
 when it calls process.exit your whole server won't go down).  
-We require Node.js version 16 or later.
+We require Node.js version 22 or later.
 
 ## API
 
@@ -119,6 +119,78 @@ The Promise resolved with a object like the following
   normalized: ""
 }
 ```
+
+### Keeping an instance alive
+
+Each `validateXML` call starts a new worker and Web Assembly runtime, and
+copies all the given files to it. When validating many documents against the same
+schema set, especially a large one, you can instead keep one `XMLLint` instance
+alive and send the schema files to it only once.
+
+```javascript
+const {XMLLint, memoryPages} = require('xmllint-wasm');
+
+async function example(documents, schemaFiles) {
+  // Optional, same as the memory options of validateXML.
+  // Resolves once the worker and its Web Assembly runtime are ready.
+  const linter = await XMLLint.init({
+    maxMemoryPages: 2 * memoryPages.GiB,
+  });
+  try {
+    // Add the schema files to the instance's in-memory file system once.
+    // Calling mount again replaces all previously added files.
+    // schemaFiles: [{fileName: 'main.xsd', contents: '...'}, ...]
+    await linter.mount(schemaFiles);
+
+    for (const doc of documents) {
+      // addFile keeps the other files, and replaces a file with the same name.
+      await linter.addFile('doc.xml', doc);
+      // Pass the xmllint command line arguments directly.
+      // The result has the same format as validateXML's.
+      const result = await linter.process({
+        args: ['--schema', 'main.xsd', '--noout', 'doc.xml'],
+      });
+      console.log(result.valid, result.errors);
+    }
+  } finally {
+    // Stops the worker. Pending calls are rejected.
+    linter.terminate();
+  }
+}
+```
+
+Unlike `validateXML`, `process` only takes the xmllint command line arguments,
+so the files they reference need to be added with `mount` or `addFile` first.
+
+In environments that support
+[explicit resource management](https://github.com/tc39/proposal-explicit-resource-management),
+you can declare the instance with `using` instead of calling `terminate` yourself.
+With TypeScript, this requires the `esnext.disposable` lib (or `esnext`) in your `tsconfig.json`.
+
+```javascript
+using linter = await XMLLint.init();
+```
+
+`mount` and `addFile` return promises too, which reject if a file can't be written.
+Await them, or at least handle their errors: in Node.js, a rejected promise that is
+not handled ends the process by default.
+
+If xmllint can't run, like when a schema doesn't parse, that `process` call is
+rejected, but the instance stays usable. Only when the worker or its Web Assembly
+runtime fails, or after `terminate`, is the instance terminated for good. You can check
+`linter.terminated` to know when to create a new instance:
+
+```javascript
+if (linter.terminated) {
+  linter = await XMLLint.init();
+  await linter.mount(schemaFiles);
+}
+```
+
+Calls to `process` on the same instance are run one at a time, in order.
+xmllint still parses the schema on each call, so the speedup depends on how
+much of the time goes to starting the runtime and copying the files, compared to
+the validation itself.
 
 ### Usage in browsers
 

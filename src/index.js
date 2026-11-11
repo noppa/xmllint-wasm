@@ -24,35 +24,41 @@ function normalizeInput(fileInput, extension) {
 			return xmlInfo;
 		}
 	});
-}
+};
 
-/**
- * @param {import("./index").XMLLintOptions} options 
- */
-function preprocessOptions(options) {
-	const xmls = normalizeInput(options.xml, 'xml');
-	const extension = options.extension || 'schema';
+function validateOptions(processedOptions) {
+	const orig = processedOptions.original;
 
-	validateOption(['schema', 'relaxng'], 'extension', extension);
-
-	const schemas = normalizeInput(options.schema || [], 'xsd');
-	const preloads = normalizeInput(options.preload || [], 'xml');
-
-	if (!options.disableFileNameValidation)	{
-		for (const file of xmls.concat(schemas)) {
+	if (!orig.disableFileNameValidation)	{
+		const files = processedOptions.files;
+		for (const file of files.xmls.concat(files.schemas)) {
 			if (/(^|\s)-/.test(file.fileName)) {
 				throw new Error(`Invalid file name "${file.fileName}" that would be interpreted as a command line option.`);
 			}
 		}
 	}
 
-	const normalization = options.normalization || '';
-	validateOption(['', 'format', 'c14n'], 'normalization', normalization);
+	const extension = orig.extension || 'schema';
+	const normalization = orig.normalization || '';
 
-	const inputFiles = xmls.concat(schemas, preloads);
+	validateOption(['schema', 'relaxng'], 'extension', extension);
+	validateOption(['', 'format', 'c14n'], 'normalization', normalization);
+	validateMemoryLimitOptions(processedOptions.memory);
+}
+
+/**
+ * @param {import("./index").XMLLintOptions} options
+ */
+function preprocessOptions(options) {
+	const xmls = normalizeInput(options.xml, 'xml');
+	const schemas = normalizeInput(options.schema || [], 'xsd');
+	const preloads = normalizeInput(options.preload || [], 'xml');
+
+	const normalization = options.normalization || '';
+	const extension = options.extension || 'schema';
 
 	/** @type string[] */
-	let args = [];
+	const args = [];
 	schemas.forEach(function(schema) {
 		args.push(`--${extension}`);
 		args.push(schema['fileName']);
@@ -73,22 +79,25 @@ function preprocessOptions(options) {
 		args.push(xml['fileName']);
 	});
 
-	if (options.modifyArguments) {
-		args = options.modifyArguments(args);
-		if (!Array.isArray(args)) {
-			throw new Error('modifyArguments must return an array of arguments');
-		}
-	}
-
 	const opts = {
-		inputFiles, args,
+		args,
+		files: {
+			xmls,
+			schemas,
+			preloads,
+		},
+		memory: resolveMemoryOptions(options),
+		original: options
+	};
+
+	return opts;
+}
+
+function resolveMemoryOptions(options) {
+	return {
 		initialMemory: options.initialMemoryPages || memoryPages.defaultInitialMemoryPages,
 		maxMemory: options.maxMemoryPages || memoryPages.defaultMaxMemoryPages,
 	};
-
-	validateMemoryLimitOptions(opts);
-
-	return opts;
 }
 
 function validationSucceeded(exitCode) {
@@ -158,74 +167,240 @@ function parseErrors(/** @type {string} */ output) {
 const messageKey = 'xmllint-wasm';
 
 /** @type {import("./index").validateXML} */
-function validateXML(options) {
-	const preprocessedOptions = preprocessOptions(options);
-	preprocessedOptions[messageKey] = true;
-	var worker;
+async function validateXML(options) {
+	let linter, ret;
 
-	return new Promise(function validateXMLPromiseCb(resolve, reject) {
-		function onmessage(event) {
+	const preprocessed = preprocessOptions(options);
+	validateOptions(preprocessed);
+
+	let args = preprocessed.args;
+	if (options.modifyArguments) {
+		args = options.modifyArguments(args);
+		if (!Array.isArray(args)) {
+			throw new Error('modifyArguments must return an array of arguments');
+		}
+	}
+
+	try {
+		linter = await XMLLint.init({
+			initialMemoryPages: options.initialMemoryPages,
+			maxMemoryPages: options.maxMemoryPages,
+		});
+		await linter.mount([...preprocessed.files.xmls, ...preprocessed.files.schemas, ...preprocessed.files.preloads]);
+		ret = await linter.process({args});
+	} finally {
+		if (linter) {
+			linter.terminate();
+		}
+	}
+
+	return ret ? ret : Promise.reject('Unexepected error');
+}
+
+class XMLLint {
+	/**
+	 * Use XMLLint.init instead, which also waits for the runtime to be ready.
+	 */
+	constructor() {
+		this.worker = null;
+		this.messageId = 0;
+		this.pending = new Map();
+		this._terminated = false;
+
+		// #ifdef browser
+		this.worker = new Worker(new URL('./xmllint-browser.mjs', import.meta.url), { type: 'module' });
+		this.listen = this.worker.addEventListener.bind(this.worker);
+		// #endif
+
+		// #ifdef node
+		const { Worker } = require('worker_threads');
+		this.worker = new Worker(require('path').resolve(__dirname, './xmllint-node.js'));
+		this.listen = this.worker.on.bind(this.worker);
+		// #endif
+
+		this._bindListeners();
+	}
+
+	/** @type {typeof import("./index").XMLLint.init} */
+	static async init(options) {
+		const memory = resolveMemoryOptions(options || {});
+		validateMemoryLimitOptions(memory);
+
+		const linter = new XMLLint();
+		try {
+			await linter._request({
+				type: 'INIT',
+				initialMemory: memory.initialMemory,
+				maxMemory: memory.maxMemory
+			});
+		} catch (err) {
+			linter.terminate();
+			throw err;
+		}
+		return linter;
+	}
+
+	/**
+	 * Internal setup for worker communication
+	 */
+	_bindListeners() {
+		const onmessage = (event) => {
 			// #ifdef browser
 			var data = event.data;
+			// #endif
 			// #ifdef node
 			var data = event;
 			// #endif
+
 			if (!data || data[messageKey] !== true) {
 				// Not a message from our worker, ignore it.
 				return;
 			}
 
-			const valid = validationSucceeded(data.exitCode);
-			if (valid === null) {
-				const err = new Error(data.stderr);
-				err.code = data.exitCode;
-				reject(err);
-			} else {
-				resolve({
-					valid: valid,
-					normalized: data.stdout,
-					errors: valid ? [] : parseErrors(data.stderr),
-					rawOutput: data.stderr
-					/* Traditionally, stdout has been suppressed both
-					 * by libxml2 compile options as well as explict
-					 * --noout in arguments; hence »rawOutput« refers
-					 * only to stderr, which is a reasonable attribute value
-					 * despite the slightly odd attribute name.
-					 */
-				});
+			if (data.type === 'EXIT') {
+				// xmllint called exit(), which ends the runtime.
+				this._fail(new Error(`XMLLint worker: xmllint exited with code ${data.exitCode}`));
+				return;
 			}
-		}
 
-		function onerror(err) {
-			reject(err);
-		}
+			const prom = this.pending.get(data.seq);
+			if (!prom) {
+				// The call was already rejected, e.g. by terminate.
+				return;
+			}
+			this.pending.delete(data.seq);
 
-		// #ifdef browser
-		worker = new Worker(new URL('./xmllint-browser.mjs', import.meta.url), { type: 'module' });
+			if (data.error) {
+				const err = new Error(data.error);
+				prom.reject(err);
+				if (data.fatal) {
+					// The runtime can't run anything anymore.
+					this._fail(err);
+				}
+			} else if (data.type === 'DONE') {
+				prom.resolve();
+			} else if (data.type === 'RESULT') {
+				const valid = validationSucceeded(data.exitCode);
+				if (valid === null) {
+					const err = new Error(data.stderr);
+					err.code = data.exitCode;
+					prom.reject(err);
+				} else {
+					prom.resolve({
+						valid: valid,
+						normalized: data.stdout,
+						errors: valid ? [] : parseErrors(data.stderr),
+						rawOutput: data.stderr
+					});
+				}
+			} else {
+				prom.reject(new Error(`XMLLint: unexpected message type ${data.type} from the worker`));
+			}
+		};
+
+		const onerror = (err) => {
+			// A worker that failed answers nothing further, so everything waiting on
+			// it has to be told.
+			this._fail(err);
+		};
+
+		this.listen('message', onmessage);
+		this.listen('error', onerror);
 		// #ifdef node
-		const {Worker} = require('worker_threads');
-		worker = new Worker(require('path').resolve(__dirname, './xmllint-node.js'));
+		this.listen('exit', (exitCode) => {
+			this._fail(new Error(`XMLLint worker exited with code ${exitCode}`));
+		});
 		// #endif
+	}
 
-		// #ifdef browser
-		var addEventListener = worker.addEventListener.bind(worker);
-		// #ifdef node
-		var addEventListener = worker.on.bind(worker);
-		// #endif
+	/**
+	 * True when the instance can't be used anymore, either because terminate was
+	 * called, or because the worker or its runtime failed. Create a new instance
+	 * with XMLLint.init to continue.
+	 */
+	get terminated() {
+		return this._terminated;
+	}
 
-		addEventListener('message', onmessage);
-		addEventListener('error', onerror);
-		worker.postMessage(preprocessedOptions);
-	}).finally(() => {
-		if (worker) {
-			return worker.terminate();
+	_post(message) {
+		message[messageKey] = true;
+		this.worker.postMessage(message);
+	}
+
+	/**
+	 * Sends a message to the worker. Resolves with the worker's answer to it.
+	 */
+	_request(message) {
+		if (this._terminated) {
+			return Promise.reject(new Error('XMLLint instance is terminated. Create a new one with XMLLint.init.'));
 		}
-	});
+
+		const seq = ++this.messageId;
+		return new Promise((resolve, reject) => {
+			this.pending.set(seq, { resolve, reject });
+			this._post({...message, seq});
+		});
+	}
+
+	/**
+	 * Replaces all files previously added with mount or addFile.
+	 */
+	mount(files) {
+		return this._request({type: 'MOUNT', files});
+	}
+
+	/**
+	 * Adds a file, keeping the others.
+	 */
+	addFile(fileName, contents) {
+		return this._request({type: 'ADDFILES', files: [{fileName, contents}]});
+	}
+
+	/**
+	 * Runs xmllint with the given arguments.
+	 */
+	process(options) {
+		const args = options.args;
+		if (!Array.isArray(args) || args.length === 0) {
+			return Promise.reject(new Error('XMLLint process: args must be a non-empty array of xmllint arguments'));
+		}
+
+		return this._request({type: 'PROCESS', args});
+	}
+
+	/** Rejects everything outstanding. */
+	_failAll(err) {
+		const pending = [...this.pending.values()];
+		this.pending.clear();
+		for (const prom of pending) prom.reject(err);
+	}
+
+	terminate() {
+		// Use the error from here rather than the call site: it points at the
+		// terminate, which is what a user debugging this needs to see.
+		this._fail(new Error('Worker terminated'));
+	}
+
+	/** Ends the instance: stops the worker and rejects everything outstanding. */
+	_fail(err) {
+		this._terminated = true;
+		if (this.worker) {
+			const worker = this.worker;
+			this.worker = null;
+			worker.terminate();
+		}
+		this._failAll(err);
+	}
+
+	[Symbol.dispose]() {
+		this.terminate();
+	}
 }
 
 // #ifdef browser
-export { validateXML, memoryPages };
+export { validateXML, memoryPages, XMLLint };
 // #ifdef node
 module.exports.validateXML = validateXML;
 module.exports.memoryPages = memoryPages;
+module.exports.XMLLint = XMLLint;
 // #endif
