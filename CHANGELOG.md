@@ -30,12 +30,15 @@ The TypeScript definitions now refer to `Symbol.dispose`, which requires the
 `esnext.disposable` lib (or `esnext`) in your `tsconfig.json`, unless you use `skipLibCheck`.
 This is a **breaking change** for TypeScript users.
 
-To make xmllint safe to run several times in the same runtime, the build now
-patches libxml2's xmllint to reset its global state between runs.
-
 Closes [#30](https://github.com/noppa/xmllint-wasm/issues/30).
 PR [#31](https://github.com/noppa/xmllint-wasm/pull/31), thanks [@JohannesBe](https://github.com/JohannesBe)
 and [@dtretyakov](https://github.com/dtretyakov)!
+
+### Upgrade libxml2 to v2.15.4
+
+See the [libxml2 release notes](https://gitlab.gnome.org/GNOME/libxml2/-/blob/v2.15.4/NEWS)
+for the changes since v2.13.8. The error messages in this library's tests are unchanged,
+but other messages from libxml2 may differ slightly.
 
 ## 5.3.0
 

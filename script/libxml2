@@ -5,19 +5,14 @@ set -euo pipefail
 mkdir -p ./build
 mkdir -p ./libxml2/m4
 
-# xmllint holds its options and exit status in statics, which a runtime kept
-# alive across documents carries from one to the next. See the patch header.
 cd ./libxml2
-git apply --reverse --check ../patches/xmllint-reentrant.patch 2>/dev/null \
-	|| git apply ../patches/xmllint-reentrant.patch
 autoreconf -if -Wall
 cd ../build
-CFLAGS="${CFLAGS:--g -O2} -DXMLLINT_REENTRANT" \
 emconfigure ../libxml2/configure --disable-shared \
-  --with-minimum --with-http=no --with-ftp=no \
+  --with-minimum --with-http=no \
   --with-python=no --with-threads=no \
   --with-output --with-c14n \
-  --with-schemas --with-schematron \
+  --with-schemas --with-relaxng --with-schematron \
   --with-reader
 emmake make
 cd ..
