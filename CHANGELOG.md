@@ -34,7 +34,7 @@ Closes [#30](https://github.com/noppa/xmllint-wasm/issues/30).
 PR [#31](https://github.com/noppa/xmllint-wasm/pull/31), thanks [@JohannesBe](https://github.com/JohannesBe)
 and [@dtretyakov](https://github.com/dtretyakov)!
 
-### Upgrade libxml2 to v2.15.4
+### Upgrade libxml2 to v2.15.4 and Emscripten to 7.0.0
 
 See the [libxml2 release notes](https://gitlab.gnome.org/GNOME/libxml2/-/blob/v2.15.4/NEWS)
 for the changes since v2.13.8. The error messages in this library's tests are unchanged,
