@@ -15,7 +15,8 @@ function use_emcc() {
     -s EXPORTED_RUNTIME_METHODS='["callMain", "FS"]' \
     -s EXPORTED_FUNCTIONS='["_main", "_fflush", "_putchar"]' \
 		--closure 1 \
-		./build/xmllint-xmllint.o ./build/.libs/libxml2.a ./libz.a \
+		./build/main.o ./build/xmllint-xmllint.o ./build/xmllint-shell.o \
+		./build/.libs/libxml2.a ./libz.a \
 		-o xmllint.js \
 		--pre-js ./build/worker-pre.js \
 		--extern-post-js ./build/worker-post.js \
@@ -23,6 +24,9 @@ function use_emcc() {
 }
 
 mkdir -p build
+
+# Our own main in place of libxml2's lintmain.c. See the comment in the file.
+emcc -Os -I./build/include -I./libxml2/include -c ./src/main.c -o ./build/main.o
 
 function compile_js_file() {
 	local compile_env="$1"

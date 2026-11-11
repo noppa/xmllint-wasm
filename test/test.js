@@ -342,6 +342,29 @@ async function testKeepAliveDoesNotCarryVerdicts() {
 	}
 }
 
+// --maxmem installs allocators that enforce the limit for the rest of the
+// process. A kept-alive instance must remove them after the run, or the next
+// run, with no limit set, fails its first allocation.
+async function testKeepAliveMaxmemDoesNotCarryOver() {
+	const linter = await xmllint.XMLLint.init();
+	try {
+		await linter.mount(schemaOptions.preload);
+		await linter.addFile('doc.xml', xmlValid);
+		await linter.addFile('test.xsd', schemaOptions.schema);
+		const args = ['--schema', 'test.xsd', '--noout', 'doc.xml'];
+
+		await assert.rejects(
+			linter.process({args: ['--maxmem', '1000', ...args]}),
+			/Maximum memory exceeded/,
+		);
+
+		const unlimited = await linter.process({args});
+		assert.equal(unlimited.valid, true, JSON.stringify(unlimited.errors));
+	} finally {
+		linter.terminate();
+	}
+}
+
 // The same documents through the same instance must reach the same verdicts as
 // the one-shot API, which gets a fresh runtime every time.
 async function testKeepAliveAgreesWithValidateXML() {
@@ -548,6 +571,7 @@ runTests(
 	testWithLargeFile,
 	testWithMissingWasmFile,
 	testKeepAliveDoesNotCarryVerdicts,
+	testKeepAliveMaxmemDoesNotCarryOver,
 	testKeepAliveAgreesWithValidateXML,
 	testKeepAliveRejectsOnTerminate,
 	testKeepAliveMemoryOptions,

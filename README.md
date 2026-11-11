@@ -15,7 +15,7 @@ Works in Node.js and modern browsers.
 
 ## Overview of changes made to the original project
 
-* libxml2 version is upgraded to v2.13.8
+* libxml2 version is upgraded to v2.15.4
 * The output is wasm instead of asm.js
 * In addition to modern browsers with wasm support, works in Node.js 22 or later
 * Library size is quite a bit smaller, the wasm file and wrapper js files
