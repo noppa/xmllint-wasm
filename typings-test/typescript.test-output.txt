@@ -1,4 +1,4 @@
 typings-test/typescript.test.ts(10,21): error TS2345: Argument of type '{}' is not assignable to parameter of type 'XMLLintOptions'.
-typings-test/typescript.test.ts(52,10): error TS2540: Cannot assign to 'terminated' because it is a read-only property.
-typings-test/typescript.test.ts(56,4): error TS2353: Object literal may only specify known properties, and 'xml' does not exist in type 'XMLLintProcessOptions'.
-typings-test/typescript.test.ts(71,1): error TS2673: Constructor of class 'XMLLint' is private and only accessible within the class declaration.
+typings-test/typescript.test.ts(57,10): error TS2540: Cannot assign to 'terminated' because it is a read-only property.
+typings-test/typescript.test.ts(61,4): error TS2353: Object literal may only specify known properties, and 'xml' does not exist in type 'XMLLintProcessOptions'.
+typings-test/typescript.test.ts(76,1): error TS2673: Constructor of class 'XMLLint' is private and only accessible within the class declaration.

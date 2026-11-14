@@ -36,6 +36,11 @@ async function example() {
 	}
 }
 
+async function preloadExample() {
+	const done: Promise<void> = xmllint.XMLLint.preload();
+	await done;
+}
+
 async function keepAliveExample(schema: string, xml: Buffer) {
 	const linter = await xmllint.XMLLint.init({
 		initialMemoryPages: xmllint.memoryPages.defaultInitialMemoryPages,

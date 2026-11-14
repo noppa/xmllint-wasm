@@ -5,6 +5,21 @@
 Officially supported Node.js version is raised from 16 to 22, the oldest
 Node.js version that is still maintained. This is a **breaking change**.
 
+### The Web Assembly module is compiled once and shared
+
+The Web Assembly module is now compiled once, on the main thread, and shared
+by all workers, instead of each worker loading and compiling it again. This makes
+`validateXML` calls after the first one, and new `XMLLint` instances, start faster.
+The worker script loads while the module compiles.
+
+The new `XMLLint.preload()` starts compiling the module ahead of time, for
+example while the page loads, so that the first call doesn't have to wait for it.
+Calling it is optional.
+
+If the module can't be compiled on the main thread, like on a page whose
+Content Security Policy doesn't allow Web Assembly, each worker loads it itself,
+as before.
+
 ### Keep an xmllint instance alive between calls
 
 New `XMLLint` API that keeps the worker, the Web Assembly runtime and its

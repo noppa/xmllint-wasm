@@ -273,30 +273,6 @@ async function runTests(...tests) {
 	console.log('All tests passed.');
 }
 
-async function testWithMissingWasmFile() {
-	// Locally xmllint.wasm is at the repo root; in CI the package is installed
-	// from a tarball into node_modules/xmllint-wasm/ so we fall back there.
-	const path = require('path');
-	let wasmPath = path.resolve(__dirname, '../xmllint.wasm');
-	if (!fs.existsSync(wasmPath)) {
-		wasmPath = path.join(path.dirname(require.resolve('xmllint-wasm')), 'xmllint.wasm');
-	}
-	const tmpPath = wasmPath + '.bak';
-	fs.renameSync(wasmPath, tmpPath);
-	try {
-		let error;
-		try {
-			await xmllint.validateXML({xml: '<foo/>'});
-		} catch (err) {
-			error = err;
-		}
-		assert(error, 'Expected promise to reject when WASM file is missing');
-		assert.match(String(error.message), /WASM Abort/);
-	} finally {
-		fs.renameSync(tmpPath, wasmPath);
-	}
-}
-
 async function testWithFilesInSubdirectories() {
 	// FS.writeFile does not create parent directories, so a fileName containing
 	// a slash used to fail with ENOENT. Schema sets that import each other by
@@ -540,20 +516,21 @@ async function testKeepAliveTerminatedFlag() {
 	await assert.rejects(linter.mount([]), /instance is terminated/);
 }
 
-// init only resolves once the runtime is ready, so a runtime that fails to
-// start is reported by init.
-async function testKeepAliveInitRejectsWhenRuntimeFails() {
-	const path = require('path');
-	let wasmPath = path.resolve(__dirname, '../xmllint.wasm');
-	if (!fs.existsSync(wasmPath)) {
-		wasmPath = path.join(path.dirname(require.resolve('xmllint-wasm')), 'xmllint.wasm');
-	}
-	const tmpPath = wasmPath + '.bak';
-	fs.renameSync(wasmPath, tmpPath);
-	try {
-		await assert.rejects(xmllint.XMLLint.init(), /WASM Abort/);
-	} finally {
-		fs.renameSync(tmpPath, wasmPath);
+// The compiled Web Assembly module is kept for the lifetime of the process,
+// so the tests that depend on how it gets loaded run in fresh processes.
+async function testWasmLoading() {
+	const {execFile} = require('child_process');
+	const script = require('path').resolve(__dirname, 'test-wasm-loading.js');
+	for (const name of require(script)) {
+		await new Promise((resolve, reject) => {
+			execFile(process.execPath, [script, name], (err, stdout, stderr) => {
+				if (err) {
+					reject(new Error(`${name} failed:\n${stdout}${stderr}`));
+				} else {
+					resolve();
+				}
+			});
+		});
 	}
 }
 
@@ -569,7 +546,6 @@ runTests(
 	testWithFilesInSubdirectories,
 	testWithUnexpectedWorkerMessages,
 	testWithLargeFile,
-	testWithMissingWasmFile,
 	testKeepAliveDoesNotCarryVerdicts,
 	testKeepAliveMaxmemDoesNotCarryOver,
 	testKeepAliveAgreesWithValidateXML,
@@ -581,5 +557,5 @@ runTests(
 	testKeepAliveDispose,
 	testKeepAliveWithUsing,
 	testKeepAliveTerminatedFlag,
-	testKeepAliveInitRejectsWhenRuntimeFails,
+	testWasmLoading,
 );

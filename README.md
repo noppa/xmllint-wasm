@@ -192,6 +192,21 @@ xmllint still parses the schema on each call, so the speedup depends on how
 much of the time goes to starting the runtime and copying the files, compared to
 the validation itself.
 
+### Loading the Web Assembly module ahead of time
+
+The Web Assembly module is compiled once, the first time it's needed, and shared by
+all later `validateXML` calls and `XMLLint` instances. To have it ready before the
+first call, start compiling it early, for example when your page loads:
+
+```javascript
+XMLLint.preload();
+```
+
+The returned promise never rejects. If the module can't be compiled on the main
+thread, like on a page whose Content Security Policy doesn't allow Web Assembly,
+each worker loads it itself instead, and `init` or `validateXML` report the error
+if that fails too.
+
 ### Usage in browsers
 
 Check [./browser-demo/html-data](./browser-demo/html-data) index.html and
