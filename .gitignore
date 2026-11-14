@@ -5,7 +5,6 @@ node_modules/
 build/
 dist/
 bundle.js
-.parcel-cache/
 
 # Build output
 xmllint.js

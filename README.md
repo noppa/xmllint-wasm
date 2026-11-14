@@ -213,8 +213,7 @@ Check [./browser-demo/html-data](./browser-demo/html-data) index.html and
 logic.js for a full example. Import the browser version, index-browser.js, as an
 EcmaScript module and use like you would use the Node.js version.
 
-Works out of the box in modern browsers that support Worker modules.
-A bit older browsers can also be supported with bundlers like [Vite](https://vite.dev/).
+Works out of the box in modern browsers, and also plays nice with bundlers like Vite.
 
 ```javascript
 import * as xmllint from './node_modules/xmllint/index-browser.mjs';

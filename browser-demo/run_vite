@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Little script to verify that the browser build can be used from a bundler that
+# supports Web Worker loading with the new URL() syntax. Vite is used here
+# because it works without any configuration, but the same should also work with
+# Webpack, Parcel and others.
+#
+# Run ./script/build-browser-demo first, then:
+#   ./browser-demo/run_vite         Start the Vite dev server.
+#   ./browser-demo/run_vite build   Bundle the demo into html-data/dist and serve the bundle.
+
+set -eu
+
+cd "$(dirname "$0")/html-data"
+
+if [ "${1:-}" = "build" ]; then
+	npx vite@8 build
+	npx vite@8 preview
+else
+	npx vite@8
+fi
