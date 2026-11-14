@@ -213,12 +213,8 @@ Check [./browser-demo/html-data](./browser-demo/html-data) index.html and
 logic.js for a full example. Import the browser version, index-browser.js, as an
 EcmaScript module and use like you would use the Node.js version.
 
-Works out of the box in latest Chrome, Edge and Safari.  
-Firefox, however, does not support Worker modules yet (tracked in issue
-[1247687](https://bugzilla.mozilla.org/show_bug.cgi?id=1247687)), which would be
-required by the implementation in this library.
-To get Firefox to work, you'll need to use a bundler like [Parcel](https://parceljs.org/) or
-Webpack to bundle the sources from modules to regular old scripts.
+Works out of the box in modern browsers that support Worker modules.
+A bit older browsers can also be supported with bundlers like [Vite](https://vite.dev/).
 
 ```javascript
 import * as xmllint from './node_modules/xmllint/index-browser.mjs';
