@@ -12,6 +12,11 @@ xmllint.validateXML({
 
 import * as fs from 'fs';
 
+async function preloadExample() {
+	const done: Promise<void> = xmllint.XMLLint.preload();
+	await done;
+}
+
 async function example() {
 	const [myXMLFile, mySchemaFile] = await Promise.all([
 		fs.promises.readFile('./my-xml-file.xml', 'utf8'),

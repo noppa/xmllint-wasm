@@ -87,7 +87,21 @@
 				reject(fatalError);
 			};
 
+			// The module compiled by the main thread, if it could compile it. Without
+			// it, Emscripten loads xmllint.wasm itself, as before.
+			const wasmModule = data.wasmModule;
+
 			const m = Module({
+				...(wasmModule ? {
+					instantiateWasm(imports, receiveInstance) {
+						// Emscripten doesn't handle a failure here, so report it as an abort.
+						WebAssembly.instantiate(wasmModule, imports).then(
+							(instance) => receiveInstance(instance, wasmModule),
+							abort
+						);
+						return {};
+					},
+				} : {}),
 				// TODO: We could eagerly start sending stdout to the parent thread while
 				// waiting for more. Or we could probably use some other, more efficient
 				// Emscripten API for output communication in the first place.

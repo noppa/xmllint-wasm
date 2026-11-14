@@ -165,6 +165,17 @@ declare export class XMLLint {
   +terminated: boolean;
 
   /**
+   * Starts loading and compiling the Web Assembly module ahead of time, so that
+   * the first init or validateXML doesn't have to wait for it. The compiled module
+   * is shared by all instances, which also saves compiling it again for each one.
+   * init and validateXML start it themselves too, so calling this is optional.
+   *
+   * Never rejects. If the module can't be compiled here, each instance loads it
+   * in its own worker instead, and init reports the error if that fails too.
+   */
+  static preload(): Promise<void>;
+
+  /**
    * Starts a new worker and the Web Assembly runtime in it.
    * Resolves once the runtime is ready, and rejects if it fails to start.
    */

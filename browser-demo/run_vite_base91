@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Same as run_vite, but with a Vite plugin that embeds xmllint.wasm into the
+# JavaScript bundle as a base91 string, so that loading xmllint-wasm doesn't need
+# a separate request for it. See ./vite-base91/plugin.mjs.
+#
+# Run ./script/build-browser-demo first, then:
+#   ./browser-demo/run_vite_base91         Start the Vite dev server.
+#   ./browser-demo/run_vite_base91 build   Bundle the demo into vite-base91/dist and serve the bundle.
+
+set -eu
+
+cd "$(dirname "$0")/vite-base91"
+
+if [ "${1:-}" = "build" ]; then
+	npx vite@8 build --config vite.config.mjs
+	npx vite@8 preview --config vite.config.mjs
+else
+	npx vite@8 --config vite.config.mjs
+fi

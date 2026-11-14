@@ -166,6 +166,68 @@ function parseErrors(/** @type {string} */ output) {
 // https://github.com/noppa/xmllint-wasm/issues/37
 const messageKey = 'xmllint-wasm';
 
+// The compiled Web Assembly module, shared by all workers. Compiling is most of
+// the cost of starting a worker, and a compiled module can be sent to a worker
+// without compiling or copying its code again. Starts on the first preload or
+// init, not on import, so that importing the library costs nothing.
+/** @type {Promise<WebAssembly.Module | null> | null} */
+let wasmModule = null;
+
+// #ifdef browser
+var compileWasmModule = async function() {
+	const url = new URL('./xmllint.wasm', import.meta.url);
+	try {
+		return await WebAssembly.compileStreaming(fetch(url));
+	} catch (err) {
+		// Streaming needs the file served as application/wasm, which is reported
+		// as a TypeError, like failing to fetch the file is. Like Emscripten, try
+		// again without streaming. A CompileError, like the one a Content Security
+		// Policy causes, would only happen again.
+		if (!(err instanceof TypeError)) {
+			throw err;
+		}
+		const response = await fetch(url);
+		if (!response.ok) {
+			throw new Error(`Could not fetch ${url}: ${response.status}`);
+		}
+		return await WebAssembly.compile(await response.arrayBuffer());
+	}
+};
+// #endif
+
+// #ifdef node
+var compileWasmModule = async function() {
+	const {readFile} = require('fs/promises');
+	const bytes = await readFile(require('path').resolve(__dirname, './xmllint.wasm'));
+	return await WebAssembly.compile(bytes);
+};
+// #endif
+
+/**
+ * Resolves with the shared module, or with null if it could not be compiled here.
+ * The worker then loads the module itself, which is also where the error is
+ * reported: a page whose Content Security Policy allows Web Assembly in the
+ * worker but not on the page should still work, and a missing file should still
+ * be reported by init as a WASM Abort.
+ *
+ * A module that doesn't compile here, because of the Content Security Policy or
+ * a broken file, won't compile on the next try either, so that is kept. Trying
+ * again would cost a download and, with a Content Security Policy, a violation
+ * report for each new instance. A file that couldn't be fetched or read is
+ * tried again by the next call.
+ */
+function getWasmModule() {
+	if (!wasmModule) {
+		wasmModule = compileWasmModule().catch((err) => {
+			if (!(err instanceof WebAssembly.CompileError)) {
+				wasmModule = null;
+			}
+			return null;
+		});
+	}
+	return wasmModule;
+}
+
 /** @type {import("./index").validateXML} */
 async function validateXML(options) {
 	let linter, ret;
@@ -206,6 +268,8 @@ class XMLLint {
 		this.messageId = 0;
 		this.pending = new Map();
 		this._terminated = false;
+		/** The error that ended the instance. */
+		this._failure = null;
 
 		// #ifdef browser
 		this.worker = new Worker(new URL('./xmllint-browser.mjs', import.meta.url), { type: 'module' });
@@ -226,18 +290,31 @@ class XMLLint {
 		const memory = resolveMemoryOptions(options || {});
 		validateMemoryLimitOptions(memory);
 
+		// The worker script loads while the module compiles.
 		const linter = new XMLLint();
 		try {
+			const module = await getWasmModule();
+			if (linter._failure) {
+				// The worker failed while the module was compiling, before there was
+				// a request to reject with the error.
+				throw linter._failure;
+			}
 			await linter._request({
 				type: 'INIT',
 				initialMemory: memory.initialMemory,
-				maxMemory: memory.maxMemory
+				maxMemory: memory.maxMemory,
+				wasmModule: module
 			});
 		} catch (err) {
 			linter.terminate();
 			throw err;
 		}
 		return linter;
+	}
+
+	/** @type {typeof import("./index").XMLLint.preload} */
+	static async preload() {
+		await getWasmModule();
 	}
 
 	/**
@@ -383,6 +460,9 @@ class XMLLint {
 
 	/** Ends the instance: stops the worker and rejects everything outstanding. */
 	_fail(err) {
+		if (!this._terminated) {
+			this._failure = err;
+		}
 		this._terminated = true;
 		if (this.worker) {
 			const worker = this.worker;

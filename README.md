@@ -192,18 +192,28 @@ xmllint still parses the schema on each call, so the speedup depends on how
 much of the time goes to starting the runtime and copying the files, compared to
 the validation itself.
 
+### Loading the Web Assembly module ahead of time
+
+The Web Assembly module is compiled once, the first time it's needed, and shared by
+all later `validateXML` calls and `XMLLint` instances. To have it ready before the
+first call, start compiling it early, for example when your page loads:
+
+```javascript
+XMLLint.preload();
+```
+
+The returned promise never rejects. If the module can't be compiled on the main
+thread, like on a page whose Content Security Policy doesn't allow Web Assembly,
+each worker loads it itself instead, and `init` or `validateXML` report the error
+if that fails too.
+
 ### Usage in browsers
 
 Check [./browser-demo/html-data](./browser-demo/html-data) index.html and
 logic.js for a full example. Import the browser version, index-browser.js, as an
 EcmaScript module and use like you would use the Node.js version.
 
-Works out of the box in latest Chrome, Edge and Safari.  
-Firefox, however, does not support Worker modules yet (tracked in issue
-[1247687](https://bugzilla.mozilla.org/show_bug.cgi?id=1247687)), which would be
-required by the implementation in this library.
-To get Firefox to work, you'll need to use a bundler like [Parcel](https://parceljs.org/) or
-Webpack to bundle the sources from modules to regular old scripts.
+Works out of the box in modern browsers, and also plays nice with bundlers like Vite.
 
 ```javascript
 import * as xmllint from './node_modules/xmllint/index-browser.mjs';

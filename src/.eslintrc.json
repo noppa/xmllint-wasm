@@ -6,7 +6,8 @@
 		"intArrayFromString": "readonly",
 		"postMessage": "readonly",
 		"addEventListener": "readonly",
-		"WebAssembly": "readonly"
+		"WebAssembly": "readonly",
+		"fetch": "readonly"
 	},
 	"rules": {
 		"no-extra-semi": "off",
