@@ -12,7 +12,7 @@ function use_emcc() {
 		-s FORCE_FILESYSTEM=1 \
 		-s INVOKE_RUN=0 \
 		-s EXPORT_NAME=Module \
-    -s EXPORTED_RUNTIME_METHODS='["callMain", "FS"]' \
+    -s EXPORTED_RUNTIME_METHODS='["callMain", "FS", "stackSave", "stackRestore"]' \
     -s EXPORTED_FUNCTIONS='["_main", "_fflush", "_putchar"]' \
 		--closure 1 \
 		./build/main.o ./build/xmllint-xmllint.o ./build/xmllint-shell.o \
