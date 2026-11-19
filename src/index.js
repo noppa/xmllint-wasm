@@ -306,7 +306,7 @@ async function validateXML(options) {
 		}
 	}
 
-	// A new worker script loads while the module compiles.
+	// A new worker's script, if one is started, loads while the module compiles.
 	const linter = takeIdleLinter() || new XMLLint();
 	try {
 		const module = await getWasmModule();
@@ -329,8 +329,9 @@ async function validateXML(options) {
 			// that memory while it waits, until its next garbage collection, which
 			// may not come before its next call, so the worker is not kept.
 			linter.terminate();
+		} else {
+			releaseLinter(linter);
 		}
-		releaseLinter(linter);
 	}
 
 	return result ? toValidationResult(result) : Promise.reject('Unexepected error');

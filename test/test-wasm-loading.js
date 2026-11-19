@@ -46,7 +46,7 @@ const tests = {
 		await withoutWasmFile(async () => {
 			await assert.rejects(xmllint.validateXML({xml: '<foo/>', normalization: 'format'}), /WASM Abort/);
 		});
-		// The worker whose runtime failed is not reused.
+		// A runtime that failed to start doesn't break later calls.
 		const {valid} = await xmllint.validateXML({xml: '<foo/>', normalization: 'format'});
 		assert.equal(valid, true);
 	},
