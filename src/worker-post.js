@@ -203,8 +203,31 @@
 		post({
 			seq: data.seq,
 			type: 'RESULT',
-			exitCode, stdout:finalStdout, stderr
+			exitCode, stdout:finalStdout, stderr,
+			// How much memory the runtime holds now, which is never less than it held
+			// at any point of the run.
+			memoryPages: wasmMemory.buffer.byteLength / 65536
 		});
+	}
+
+	// A validateXML call: runs xmllint once in a runtime of its own, which is
+	// dropped afterwards, so that nothing a call leaves in the runtime (its files,
+	// its memory, xmllint's own state) reaches the next call. Only the worker is
+	// reused between calls, because starting a worker costs much more than
+	// starting a runtime from the already compiled module.
+	async function run(data) {
+		try {
+			await init(data);
+			await mount(data);
+			await process(data);
+		} finally {
+			// The next RUN starts a new runtime, and the memory of this one can be
+			// freed while the worker waits for it.
+			wasmMemory = undefined;
+			module = undefined;
+			files.clear();
+			flush();
+		}
 	}
 
 	async function onWorkerMessage(event) {
@@ -225,7 +248,8 @@
 			INIT: init,
 			MOUNT: mount,
 			ADDFILES: addFile,
-			PROCESS: process
+			PROCESS: process,
+			RUN: run
 		};
 
 		const handler = handlers[data.type];
@@ -233,12 +257,12 @@
 			throw new Error(`XMLLint worker: Unknown message type ${data.type}`);
 		}
 
-		// Every message is answered: PROCESS with its RESULT, the others with DONE,
-		// and a handler that throws with the error. Left to reject on its own, an
-		// error would surface as an unhandled rejection here and as a call that
-		// never settles on the other side.
+		// Every message is answered: PROCESS and RUN with their RESULT, the others
+		// with DONE, and a handler that throws with the error. Left to reject on its
+		// own, an error would surface as an unhandled rejection here and as a call
+		// that never settles on the other side.
 		enqueue(() => handler(data).then(() => {
-			if (data.type !== 'PROCESS') {
+			if (data.type !== 'PROCESS' && data.type !== 'RUN') {
 				post({seq: data.seq, type: 'DONE'});
 			}
 		}, (err) => post({

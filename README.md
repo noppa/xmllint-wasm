@@ -122,10 +122,14 @@ The Promise resolved with a object like the following
 
 ### Keeping an instance alive
 
-Each `validateXML` call starts a new worker and Web Assembly runtime, and
-copies all the given files to it. When validating many documents against the same
-schema set, especially a large one, you can instead keep one `XMLLint` instance
-alive and send the schema files to it only once.
+Each `validateXML` call starts a new Web Assembly runtime, and copies all the
+given files to it. Its worker is kept and reused by later calls, but nothing else
+is: a call doesn't see the files or anything else of earlier calls. Up to one
+worker per CPU core is kept, and in Node.js they don't keep the process running.
+
+When validating many documents against the same schema set, especially a large
+one, you can instead keep one `XMLLint` instance alive and send the schema files
+to it only once.
 
 ```javascript
 const {XMLLint, memoryPages} = require('xmllint-wasm');

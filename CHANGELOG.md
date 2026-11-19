@@ -5,6 +5,16 @@
 Officially supported Node.js version is raised from 16 to 22, the oldest
 Node.js version that is still maintained. This is a **breaking change**.
 
+### validateXML reuses its workers
+
+`validateXML` now keeps its worker for the next calls, instead of starting a
+new one for every call, which took most of the time of validating a small
+document. Each call still runs in a new Web Assembly runtime with only its own
+files, so calls stay as isolated from each other as before.
+
+Up to one worker per CPU core is kept. In Node.js, the kept workers don't keep
+the process running.
+
 ### The Web Assembly module is compiled once and shared
 
 The Web Assembly module is now compiled once, on the main thread, and shared

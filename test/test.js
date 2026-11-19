@@ -227,39 +227,6 @@ async function testWithLargeFile() {
 	assert(resultUsingStreaming.valid);
 }
 
-async function testWithUnexpectedWorkerMessages() {
-	// Node.js sends messages of its own, like {'watch:require': [...]} in watch
-	// mode, over the same channel that we use to talk with the worker. Both sides
-	// should ignore messages that are not ours instead of crashing on them.
-	// https://github.com/noppa/xmllint-wasm/issues/37
-	const workerThreads = require('worker_threads');
-	const OriginalWorker = workerThreads.Worker;
-	const unrelatedMessage = {
-		'watch:require': ['/app/node_modules/xmllint-wasm/xmllint-node.js'],
-	};
-
-	class NoisyWorker extends OriginalWorker {
-		postMessage(value) {
-			// By the time we get here, the parent has already subscribed to the
-			// worker's messages, so we can send noise to both directions.
-			super.postMessage(unrelatedMessage);
-			this.emit('message', unrelatedMessage);
-			return super.postMessage(value);
-		}
-	}
-
-	workerThreads.Worker = NoisyWorker;
-	try {
-		const {valid, errors} = await xmllint.validateXML({
-			xml: {fileName: 'valid.xml', contents: xmlValid},
-			...schemaOptions,
-		});
-		assert.deepEqual({valid, errors}, {valid: true, errors: []});
-	} finally {
-		workerThreads.Worker = OriginalWorker;
-	}
-}
-
 async function runTests(...tests) {
 	for (const test of tests) {
 		try {
@@ -290,6 +257,72 @@ async function testWithFilesInSubdirectories() {
 	});
 
 	assert.deepEqual({valid, errors}, {valid: true, errors: []});
+}
+
+// validateXML reuses its workers, but each call runs in a runtime of its own,
+// so nothing one call does reaches the next: not its files, not its verdict and
+// not the allocator that --maxmem installs.
+async function testCallsDontShareState() {
+	const args = ['--schema', 'test.xsd', '--noout', 'doc.xml'];
+	const validate = (xml, extraArgs = []) => xmllint.validateXML({
+		xml: {fileName: 'doc.xml', contents: xml},
+		schema: {fileName: 'test.xsd', contents: schemaOptions.schema},
+		preload: schemaOptions.preload,
+		modifyArguments: () => [...extraArgs, ...args],
+	});
+
+	const verdicts = [];
+	for (const xml of [xmlValid, xmlInvalid, xmlValid]) {
+		verdicts.push((await validate(xml)).valid);
+	}
+	assert.deepEqual(verdicts, [true, false, true]);
+
+	await assert.rejects(validate(xmlValid, ['--maxmem', '1000']), /Maximum memory exceeded/);
+	assert.equal((await validate(xmlValid)).valid, true);
+
+	// doc.xml was written by the calls above, but not by this one.
+	const {valid, rawOutput} = await xmllint.validateXML({xml: [], modifyArguments: () => ['--noout', 'doc.xml']});
+	assert.equal(valid, false);
+	assert.match(rawOutput, /failed to load "doc.xml"/);
+}
+
+// Calls running at the same time each get the answer to their own document.
+async function testConcurrentCalls() {
+	const count = 3 * require('os').availableParallelism();
+	const results = await Promise.all(Array.from({length: count}, (_, i) => xmllint.validateXML({
+		xml: {fileName: `doc_${i}.xml`, contents: i % 2 ? xmlInvalid : xmlValid},
+		...schemaOptions,
+	})));
+
+	results.forEach((result, i) => {
+		if (i % 2) {
+			assert.equal(result.valid, false);
+			assert.deepEqual(result.errors.map(e => e.loc.fileName), [`doc_${i}.xml`, `doc_${i}.xml`]);
+		} else {
+			assert.equal(result.valid, true);
+			assert.equal(result.rawOutput.trim(), `doc_${i}.xml validates`);
+		}
+	});
+}
+
+// The workers that validateXML keeps for later calls don't keep the process running.
+async function testProcessExitsAfterValidateXML() {
+	const {execFile} = require('child_process');
+	const indexPath = require.resolve('../index-node.js');
+	const script = `require(${JSON.stringify(indexPath)})
+		.validateXML({xml: '<foo/>', normalization: 'format'})
+		.then(result => console.log(result.valid));`;
+
+	const stdout = await new Promise((resolve, reject) => {
+		execFile(process.execPath, ['-e', script], {timeout: 10000}, (err, stdout, stderr) => {
+			if (err) {
+				reject(new Error(`The process did not exit by itself (${err.signal || err.code}):\n${stdout}${stderr}`));
+			} else {
+				resolve(stdout);
+			}
+		});
+	});
+	assert.equal(stdout.trim(), 'true');
 }
 
 // The point of keeping an instance alive is that documents share it. Nothing
@@ -516,11 +549,10 @@ async function testKeepAliveTerminatedFlag() {
 	await assert.rejects(linter.mount([]), /instance is terminated/);
 }
 
-// The compiled Web Assembly module is kept for the lifetime of the process,
-// so the tests that depend on how it gets loaded run in fresh processes.
-async function testWasmLoading() {
+// Runs each test of the given file in a fresh process.
+async function runInFreshProcesses(fileName) {
 	const {execFile} = require('child_process');
-	const script = require('path').resolve(__dirname, 'test-wasm-loading.js');
+	const script = require('path').resolve(__dirname, fileName);
 	for (const name of require(script)) {
 		await new Promise((resolve, reject) => {
 			execFile(process.execPath, [script, name], (err, stdout, stderr) => {
@@ -534,6 +566,17 @@ async function testWasmLoading() {
 	}
 }
 
+// The compiled Web Assembly module is kept for the lifetime of the process,
+// so the tests that depend on how it gets loaded run in fresh processes.
+async function testWasmLoading() {
+	await runInFreshProcesses('test-wasm-loading.js');
+}
+
+// So are the workers of validateXML.
+async function testWorkerReuse() {
+	await runInFreshProcesses('test-worker-reuse.js');
+}
+
 runTests(
 	testWithValidFile,
 	testWithValidFileForFormat,
@@ -544,7 +587,9 @@ runTests(
 	testWithCustomOptions,
 	testWithTwoFiles,
 	testWithFilesInSubdirectories,
-	testWithUnexpectedWorkerMessages,
+	testCallsDontShareState,
+	testConcurrentCalls,
+	testProcessExitsAfterValidateXML,
 	testWithLargeFile,
 	testKeepAliveDoesNotCarryVerdicts,
 	testKeepAliveMaxmemDoesNotCarryOver,
@@ -558,4 +603,5 @@ runTests(
 	testKeepAliveWithUsing,
 	testKeepAliveTerminatedFlag,
 	testWasmLoading,
+	testWorkerReuse,
 );
