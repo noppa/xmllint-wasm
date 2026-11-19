@@ -190,7 +190,17 @@
 
 	async function process(data) {
 		const mod = await ensureModule();
-		const exitCode = mod.callMain(data.args);
+		// callMain copies the arguments to the stack and doesn't free them. The
+		// runtime is kept for the next run, so free them here, or every run would
+		// shrink the stack until a run overflows it.
+		// https://github.com/emscripten-core/emscripten/blob/777e6e5db7b4990bcaeb1b9998ed642cc84e6629/src/postamble.js#L55-L64
+		const stack = mod.stackSave();
+		let exitCode;
+		try {
+			exitCode = mod.callMain(data.args);
+		} finally {
+			mod.stackRestore(stack);
+		}
 
 		mod._fflush(0);
 		mod._putchar(10);

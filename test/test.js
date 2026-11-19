@@ -341,6 +341,27 @@ async function testKeepAliveMaxmemDoesNotCarryOver() {
 	}
 }
 
+// Emscripten's callMain copies the arguments to the runtime's stack and leaves
+// them there. Freed after each run, they don't run the stack out, however many
+// runs an instance does. These arguments take about 260 bytes of the 64 KiB
+// stack, so if they weren't freed, 1000 runs would overflow even a stack twice
+// that size.
+async function testKeepAliveManyRuns() {
+	const linter = await xmllint.XMLLint.init();
+	try {
+		await linter.mount(schemaOptions.preload);
+		await linter.addFile('doc.xml', xmlValid);
+		await linter.addFile('test.xsd', schemaOptions.schema);
+		const args = ['--schema', 'test.xsd', '--noout', 'doc.xml'];
+		for (let i = 0; i < 1000; i++) {
+			const result = await linter.process({args});
+			assert.equal(result.valid, true, `run ${i}`);
+		}
+	} finally {
+		linter.terminate();
+	}
+}
+
 // The same documents through the same instance must reach the same verdicts as
 // the one-shot API, which gets a fresh runtime every time.
 async function testKeepAliveAgreesWithValidateXML() {
@@ -548,6 +569,7 @@ runTests(
 	testWithLargeFile,
 	testKeepAliveDoesNotCarryVerdicts,
 	testKeepAliveMaxmemDoesNotCarryOver,
+	testKeepAliveManyRuns,
 	testKeepAliveAgreesWithValidateXML,
 	testKeepAliveRejectsOnTerminate,
 	testKeepAliveMemoryOptions,
