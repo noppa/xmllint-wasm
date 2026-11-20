@@ -265,15 +265,12 @@ var maxIdleLinters = require('os').availableParallelism();
 // #endif
 
 function takeIdleLinter() {
-	let linter;
-	while ((linter = idleLinters.pop())) {
-		// A worker can end while it waits, like when its thread is terminated.
-		if (!linter.terminated) {
-			linter._setIdle(false);
-			return linter;
-		}
+	const linter = idleLinters.pop();
+	if (!linter) {
+		return null;
 	}
-	return null;
+	linter._setIdle(false);
+	return linter;
 }
 
 function releaseLinter(/** @type {XMLLint} */ linter) {
@@ -558,6 +555,12 @@ class XMLLint {
 			this._failure = err;
 		}
 		this._terminated = true;
+		// A worker can end while it waits for the next validateXML call, like when
+		// its thread is terminated. It leaves room for another one to be kept.
+		const idleIndex = idleLinters.indexOf(this);
+		if (idleIndex !== -1) {
+			idleLinters.splice(idleIndex, 1);
+		}
 		if (this.worker) {
 			const worker = this.worker;
 			this.worker = null;
