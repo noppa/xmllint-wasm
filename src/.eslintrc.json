@@ -7,7 +7,8 @@
 		"postMessage": "readonly",
 		"addEventListener": "readonly",
 		"WebAssembly": "readonly",
-		"fetch": "readonly"
+		"fetch": "readonly",
+		"navigator": "readonly"
 	},
 	"rules": {
 		"no-extra-semi": "off",

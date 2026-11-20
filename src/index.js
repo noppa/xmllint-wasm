@@ -159,6 +159,26 @@ function parseErrors(/** @type {string} */ output) {
 	});
 }
 
+/**
+ * The result of a validateXML call, or of XMLLint#process, from the worker's
+ * RESULT message.
+ * @returns {import("./index").XMLValidationResult}
+ */
+function toValidationResult(data) {
+	const valid = validationSucceeded(data.exitCode);
+	if (valid === null) {
+		const err = new Error(data.stderr);
+		err.code = data.exitCode;
+		throw err;
+	}
+	return {
+		valid: valid,
+		normalized: data.stdout,
+		errors: valid ? [] : parseErrors(data.stderr),
+		rawOutput: data.stderr
+	};
+}
+
 // Our own messages are tagged with this key so that both sides of the
 // worker channel can tell them apart from unrelated messages that the
 // runtime might send over the same channel, like the "watch:require"
@@ -228,9 +248,64 @@ function getWasmModule() {
 	return wasmModule;
 }
 
+// Workers of earlier validateXML calls, waiting for the next ones. Starting a
+// worker takes most of the time of a small validation, so they are reused, but
+// each call still gets a new runtime in the worker (see RUN in worker-post.js),
+// so calls don't see anything of each other. Up to one per CPU core is kept by
+// default (see setMaxIdleWorkers).
+/** @type {XMLLint[]} */
+const idleLinters = [];
+
+// #ifdef browser
+var maxIdleLinters = navigator.hardwareConcurrency || 4;
+// #endif
+
+// #ifdef node
+var maxIdleLinters = require('os').availableParallelism();
+// #endif
+
+function takeIdleLinter() {
+	const linter = idleLinters.pop();
+	if (!linter) {
+		return null;
+	}
+	linter._setIdle(false);
+	return linter;
+}
+
+function releaseLinter(/** @type {XMLLint} */ linter) {
+	if (linter.terminated) {
+		return;
+	}
+	if (idleLinters.length < maxIdleLinters) {
+		linter._setIdle(true);
+		idleLinters.push(linter);
+	} else {
+		linter.terminate();
+	}
+}
+
+/** @type {import("./index").setMaxIdleWorkers} */
+function setMaxIdleWorkers(max) {
+	if (!Number.isInteger(max) || max < 0) {
+		throw new Error(`Invalid maximum number of idle workers: ${max}. Expected an integer of 0 or more.`);
+	}
+	maxIdleLinters = max;
+	for (const linter of idleLinters.splice(max)) {
+		linter.terminate();
+	}
+}
+
+/** @type {import("./index").terminateIdleWorkers} */
+function terminateIdleWorkers() {
+	for (const linter of idleLinters.splice(0)) {
+		linter.terminate();
+	}
+}
+
 /** @type {import("./index").validateXML} */
 async function validateXML(options) {
-	let linter, ret;
+	let result;
 
 	const preprocessed = preprocessOptions(options);
 	validateOptions(preprocessed);
@@ -243,20 +318,35 @@ async function validateXML(options) {
 		}
 	}
 
+	// A new worker's script, if one is started, loads while the module compiles.
+	const linter = takeIdleLinter() || new XMLLint();
 	try {
-		linter = await XMLLint.init({
-			initialMemoryPages: options.initialMemoryPages,
-			maxMemoryPages: options.maxMemoryPages,
+		const module = await getWasmModule();
+		if (linter._failure) {
+			// The worker failed while the module was compiling, before there was
+			// a request to reject with the error.
+			throw linter._failure;
+		}
+		result = await linter._request({
+			type: 'RUN',
+			initialMemory: preprocessed.memory.initialMemory,
+			maxMemory: preprocessed.memory.maxMemory,
+			wasmModule: module,
+			files: [...preprocessed.files.xmls, ...preprocessed.files.schemas, ...preprocessed.files.preloads],
+			args
 		});
-		await linter.mount([...preprocessed.files.xmls, ...preprocessed.files.schemas, ...preprocessed.files.preloads]);
-		ret = await linter.process({args});
 	} finally {
-		if (linter) {
+		if (result && result.memoryPages > memoryPages.defaultMaxMemoryPages) {
+			// The runtime needed more memory than usual. The worker would hold on to
+			// that memory while it waits, until its next garbage collection, which
+			// may not come before its next call, so the worker is not kept.
 			linter.terminate();
+		} else {
+			releaseLinter(linter);
 		}
 	}
 
-	return ret ? ret : Promise.reject('Unexepected error');
+	return result ? toValidationResult(result) : Promise.reject('Unexepected error');
 }
 
 class XMLLint {
@@ -357,19 +447,7 @@ class XMLLint {
 			} else if (data.type === 'DONE') {
 				prom.resolve();
 			} else if (data.type === 'RESULT') {
-				const valid = validationSucceeded(data.exitCode);
-				if (valid === null) {
-					const err = new Error(data.stderr);
-					err.code = data.exitCode;
-					prom.reject(err);
-				} else {
-					prom.resolve({
-						valid: valid,
-						normalized: data.stdout,
-						errors: valid ? [] : parseErrors(data.stderr),
-						rawOutput: data.stderr
-					});
-				}
+				prom.resolve(data);
 			} else {
 				prom.reject(new Error(`XMLLint: unexpected message type ${data.type} from the worker`));
 			}
@@ -397,6 +475,19 @@ class XMLLint {
 	 */
 	get terminated() {
 		return this._terminated;
+	}
+
+	/**
+	 * Lets a waiting worker of validateXML not keep the Node.js process running.
+	 */
+	_setIdle(/** @type {boolean} */ idle) {
+		// #ifdef node
+		if (idle) {
+			this.worker.unref();
+		} else {
+			this.worker.ref();
+		}
+		// #endif
 	}
 
 	_post(message) {
@@ -442,7 +533,7 @@ class XMLLint {
 			return Promise.reject(new Error('XMLLint process: args must be a non-empty array of xmllint arguments'));
 		}
 
-		return this._request({type: 'PROCESS', args});
+		return this._request({type: 'PROCESS', args}).then(toValidationResult);
 	}
 
 	/** Rejects everything outstanding. */
@@ -464,6 +555,12 @@ class XMLLint {
 			this._failure = err;
 		}
 		this._terminated = true;
+		// A worker can end while it waits for the next validateXML call, like when
+		// its thread is terminated. It leaves room for another one to be kept.
+		const idleIndex = idleLinters.indexOf(this);
+		if (idleIndex !== -1) {
+			idleLinters.splice(idleIndex, 1);
+		}
 		if (this.worker) {
 			const worker = this.worker;
 			this.worker = null;
@@ -478,9 +575,11 @@ class XMLLint {
 }
 
 // #ifdef browser
-export { validateXML, memoryPages, XMLLint };
+export { validateXML, setMaxIdleWorkers, terminateIdleWorkers, memoryPages, XMLLint };
 // #ifdef node
 module.exports.validateXML = validateXML;
+module.exports.setMaxIdleWorkers = setMaxIdleWorkers;
+module.exports.terminateIdleWorkers = terminateIdleWorkers;
 module.exports.memoryPages = memoryPages;
 module.exports.XMLLint = XMLLint;
 // #endif

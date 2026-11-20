@@ -46,6 +46,9 @@ const tests = {
 		await withoutWasmFile(async () => {
 			await assert.rejects(xmllint.validateXML({xml: '<foo/>', normalization: 'format'}), /WASM Abort/);
 		});
+		// A runtime that failed to start doesn't break later calls.
+		const {valid} = await xmllint.validateXML({xml: '<foo/>', normalization: 'format'});
+		assert.equal(valid, true);
 	},
 
 	// init only resolves once the runtime is ready, so a runtime that fails to
