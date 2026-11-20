@@ -40,8 +40,8 @@ literal [1] but exists in `XMLLintProcessOptions` [2]. [prop-missing]
         		^ [1]
 
 References:
-   ../index-node.js.flow:201:20
-   201|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
+   ../index-node.js.flow:215:20
+   215|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
                            ^^^^^^^^^^^^^^^^^^^^^ [2]
 
 
@@ -60,8 +60,8 @@ Cannot call `linter.process` with object literal bound to `options` because prop
         		^ [2]
 
 References:
-   ../index-node.js.flow:201:20
-   201|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
+   ../index-node.js.flow:215:20
+   215|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
                            ^^^^^^^^^^^^^^^^^^^^^ [1]
 
 
@@ -80,10 +80,25 @@ Cannot call `linter.process` with object literal bound to `options` because prop
         		^ [2]
 
 References:
-   ../index-node.js.flow:201:20
-   201|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
+   ../index-node.js.flow:215:20
+   215|   process(options: XMLLintProcessOptions): Promise<XMLValidationResult>;
                            ^^^^^^^^^^^^^^^^^^^^^ [1]
 
 
+Error ------------------------------------------------------------------------------------------- flowtype.test.js:70:28
 
-Found 4 errors
+Cannot call `xmllint.setMaxIdleWorkers` with `'2'` bound to `max` because string [1] is incompatible with number [2].
+[incompatible-call]
+
+   flowtype.test.js:70:28
+    70| 	xmllint.setMaxIdleWorkers('2');
+                                   ^^^ [1]
+
+References:
+   ../index-node.js.flow:130:48
+   130| declare export function setMaxIdleWorkers(max: number): void;
+                                                       ^^^^^^ [2]
+
+
+
+Found 5 errors

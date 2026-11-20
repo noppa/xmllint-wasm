@@ -62,3 +62,10 @@ async function keepAliveExample(schema: string, xml: string) {
 		linter.terminate();
 	}
 }
+
+function workerPoolExample() {
+	xmllint.setMaxIdleWorkers(2);
+	xmllint.terminateIdleWorkers();
+	// Error expected: the maximum is a number
+	xmllint.setMaxIdleWorkers('2');
+}

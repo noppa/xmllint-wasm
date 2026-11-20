@@ -212,9 +212,7 @@
 
 	// A validateXML call: runs xmllint once in a runtime of its own, which is
 	// dropped afterwards, so that nothing a call leaves in the runtime (its files,
-	// its memory, xmllint's own state) reaches the next call. Only the worker is
-	// reused between calls, because starting a worker costs much more than
-	// starting a runtime from the already compiled module.
+	// its memory, xmllint's own state) reaches the next call.
 	async function run(data) {
 		try {
 			await init(data);

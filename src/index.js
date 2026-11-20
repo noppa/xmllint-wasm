@@ -251,11 +251,8 @@ function getWasmModule() {
 // Workers of earlier validateXML calls, waiting for the next ones. Starting a
 // worker takes most of the time of a small validation, so they are reused, but
 // each call still gets a new runtime in the worker (see RUN in worker-post.js),
-// so calls don't see anything of each other.
-//
-// Up to one worker per CPU core is kept. That covers calls running in parallel,
-// and more of them wouldn't run any faster. The workers that are kept don't keep
-// the Node.js process running.
+// so calls don't see anything of each other. Up to one per CPU core is kept by
+// default (see setMaxIdleWorkers).
 /** @type {XMLLint[]} */
 const idleLinters = [];
 
@@ -287,6 +284,24 @@ function releaseLinter(/** @type {XMLLint} */ linter) {
 		linter._setIdle(true);
 		idleLinters.push(linter);
 	} else {
+		linter.terminate();
+	}
+}
+
+/** @type {import("./index").setMaxIdleWorkers} */
+function setMaxIdleWorkers(max) {
+	if (!Number.isInteger(max) || max < 0) {
+		throw new Error(`Invalid maximum number of idle workers: ${max}. Expected an integer of 0 or more.`);
+	}
+	maxIdleLinters = max;
+	for (const linter of idleLinters.splice(max)) {
+		linter.terminate();
+	}
+}
+
+/** @type {import("./index").terminateIdleWorkers} */
+function terminateIdleWorkers() {
+	for (const linter of idleLinters.splice(0)) {
 		linter.terminate();
 	}
 }
@@ -557,9 +572,11 @@ class XMLLint {
 }
 
 // #ifdef browser
-export { validateXML, memoryPages, XMLLint };
+export { validateXML, setMaxIdleWorkers, terminateIdleWorkers, memoryPages, XMLLint };
 // #ifdef node
 module.exports.validateXML = validateXML;
+module.exports.setMaxIdleWorkers = setMaxIdleWorkers;
+module.exports.terminateIdleWorkers = terminateIdleWorkers;
 module.exports.memoryPages = memoryPages;
 module.exports.XMLLint = XMLLint;
 // #endif

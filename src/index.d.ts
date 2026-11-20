@@ -106,6 +106,20 @@ export interface XMLValidationResult {
 
 export function validateXML(options: XMLLintOptions): Promise<XMLValidationResult>;
 
+/**
+ * Sets how many workers validateXML keeps between calls. Defaults to the
+ * available parallelism (CPU cores). Lowering it terminates the idle workers
+ * above the new maximum; 0 keeps none. It doesn't limit how many calls run at
+ * once. Throws unless max is an integer >= 0.
+ */
+export function setMaxIdleWorkers(max: number): void;
+
+/**
+ * Terminates the workers validateXML keeps between calls. Workers of calls
+ * still running are kept when they finish; use setMaxIdleWorkers(0) to keep none.
+ */
+export function terminateIdleWorkers(): void;
+
 export interface XMLLintInitOptions {
   /**
    * Initial memory capacity, in 64KiB Web Assembly memory pages.

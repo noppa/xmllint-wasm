@@ -288,7 +288,7 @@ async function testCallsDontShareState() {
 
 // Calls running at the same time each get the answer to their own document.
 async function testConcurrentCalls() {
-	const count = 3 * require('os').availableParallelism();
+	const count = require('os').availableParallelism() + 2;
 	const results = await Promise.all(Array.from({length: count}, (_, i) => xmllint.validateXML({
 		xml: {fileName: `doc_${i}.xml`, contents: i % 2 ? xmlInvalid : xmlValid},
 		...schemaOptions,

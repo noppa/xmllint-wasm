@@ -74,3 +74,10 @@ async function keepAliveWithUsing(xml: string) {
 
 // Error expected: use XMLLint.init instead
 new xmllint.XMLLint();
+
+function workerPoolExample() {
+	xmllint.setMaxIdleWorkers(2);
+	xmllint.terminateIdleWorkers();
+	// Error expected: the maximum is a number
+	xmllint.setMaxIdleWorkers('2');
+}
